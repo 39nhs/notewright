@@ -21,7 +21,7 @@ headless renderer) renders WAV, stems, MIDI, MusicXML/PDF and Unity song folders
 | `notewright.py`, `notewright/` | Python CLI: catalog/sfz/synthkit (instruments), spec (compiler), midi, musicxml, export, engine (build + run) |
 | `engine/Runtime/` | the music engine (C#, namespace `Graze.Presentation.Audio`; Unity types come from `engine/Stubs/UnityStubs.cs`) |
 | `engine/Renderer/` | headless renderer: song.json → engine → WAV + JSON report |
-| `engine/Tests/`, `engine/run-tests.sh` | engine tests incl. playback fingerprints (`bash engine/run-tests.sh [filter]`, needs Mono) |
+| `engine/Tests/`, `engine/run-tests.sh` | engine tests incl. playback fingerprints (`bash engine/run-tests.sh [filter]` on Mono, `NOTEWRIGHT_RUNTIME=dotnet` for .NET) |
 | `data/registry.json` | downloadable libraries, pinned (regenerate with `tools/build_vsco2_registry.py`) |
 | `examples/`, `tests/` | example specs (compiled by the tests) and Python tests |
 
@@ -39,6 +39,9 @@ headless renderer) renders WAV, stems, MIDI, MusicXML/PDF and Unity song folders
   Registry instrument ids are public API: do not rename ids users may already have in specs.
 - Code is licensed GPL-3.0-only (`LICENSE`); keep `license` in plugin.json and the README in line with it.
 - Credit and license: keep each instrument source's license in the registry/catalog; exports carry credits.
+- The renderer runs on .NET Framework (Windows), the .NET SDK and Mono (`notewright/engine.py`); all of them must render
+  byte-identical audio, so engine code may not depend on runtime-specific behavior. The plugin must keep working where only
+  package archives and github.com are reachable (claude.ai's default sandbox): no new download hosts without a fallback.
 - Keep the README's network section current: list every host the plugin downloads from and what it writes.
 - Keep the skill (SKILL.md, reference/) in sync with the CLI and spec format in the same change; keep examples rendering.
 
@@ -47,8 +50,10 @@ headless renderer) renders WAV, stems, MIDI, MusicXML/PDF and Unity song folders
 - Work on a topic branch (`feat/`, `fix/`, `docs/`, or an assigned `claude/` branch) and reach `main` through a PR merged with a
   merge commit; never force-push `main`. Commit messages: `<scope>: <summary>` (scopes: plugin, engine, skill, instruments,
   docs, ci, release, merge).
-- Before pushing: `python3 -m unittest discover -s tests` (renders through the engine; needs Mono on Linux/macOS) and, when
-  `engine/` changed, `bash engine/run-tests.sh`. CI (`.github/workflows/plugin.yml`) runs both.
-- Releases: bump `.claude-plugin/plugin.json` `version` (new playback version = MINOR) and tag `vX.Y.Z` on `main`; pushed tags
+- Before pushing: `python3 -m unittest discover -s tests` (renders through the engine; needs the .NET SDK or Mono on
+  Linux/macOS) and, when `engine/` changed, `bash engine/run-tests.sh` on Mono and with `NOTEWRIGHT_RUNTIME=dotnet`.
+  CI (`.github/workflows/plugin.yml`) runs all of them and checks that Mono and .NET render byte-identical WAVs.
+- Releases: bump `.claude-plugin/plugin.json` `version` and `notewright/__init__.py` `__version__` together (a test checks;
+  new playback version = MINOR) and tag `vX.Y.Z` on `main`; pushed tags
   are never moved.
 - If a session may end, push work in progress and note what is left in the PR body.

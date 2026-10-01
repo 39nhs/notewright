@@ -1,4 +1,5 @@
-# Plugin checks: engine tests (Linux), Python unit tests with a render through the engine, doctor and an example render.
+# Plugin checks: engine tests on Mono and .NET (Linux), Python unit tests with a render through the engine and a git-only
+# instrument download, doctor, an example render, and (Linux) the same render on Mono and .NET compared byte for byte.
 name: plugin
 on:
   push:
@@ -13,6 +14,7 @@ jobs:
     env:
       NOTEWRIGHT_HOME: ${{ github.workspace }}/.notewright-home
       PYTHONUTF8: "1"
+      NOTEWRIGHT_NETWORK_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,14 +26,21 @@ jobs:
           sudo rm -f /var/lib/man-db/auto-update
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends mono-devel
+      - uses: actions/setup-dotnet@v4
+        if: runner.os == 'Linux'
+        with:
+          dotnet-version: "8.0.x"
       - name: Cache compiler
         uses: actions/cache@v4
         with:
           path: .notewright-home/tools
           key: roslyn-4.8.0-${{ runner.os }}
-      - name: Engine tests (playback fingerprints)
+      - name: Engine tests on Mono (playback fingerprints)
         if: runner.os == 'Linux'
         run: bash engine/run-tests.sh
+      - name: Engine tests on .NET (playback fingerprints)
+        if: runner.os == 'Linux'
+        run: NOTEWRIGHT_RUNTIME=dotnet bash engine/run-tests.sh
       - name: Manifests
         run: python -c "import json; [json.load(open(f, encoding='utf-8')) for f in ('.claude-plugin/plugin.json', '.claude-plugin/marketplace.json')]"
       - name: Unit tests (includes a render through the engine)
@@ -40,3 +49,9 @@ jobs:
         run: python notewright.py doctor
       - name: Render the built-in example
         run: python notewright.py render examples/pop.json --out out --stems --unity
+      - name: Mono and .NET render the same WAV
+        if: runner.os == 'Linux'
+        run: |
+          NOTEWRIGHT_RUNTIME=dotnet python notewright.py render examples/pop.json --out out-dotnet --no-score
+          NOTEWRIGHT_RUNTIME=mono python notewright.py render examples/pop.json --out out-mono --no-score
+          cmp out-dotnet/*.wav out-mono/*.wav

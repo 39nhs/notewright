@@ -21,7 +21,15 @@ Claude가 **com.graze.music 엔진(재생 V2)** 으로 곡을 작곡·편곡·�
 
 ## 설치
 
-필요: **Python 3.9+**, Linux/macOS는 **Mono**(`sudo apt install mono-devel` / `brew install mono`), Windows는 기본 .NET Framework 4.x.
+필요: **Python 3.9+**와 렌더러를 실행할 .NET 중 하나.
+
+| OS | 렌더러 런타임 (하나만 있으면 됨) |
+|---|---|
+| Windows | 기본 .NET Framework 4.x (설치 불필요) |
+| Linux | **.NET 8 SDK** (`sudo apt-get install dotnet-sdk-8.0`) 또는 Mono (`sudo apt-get install mono-devel`) |
+| macOS | **.NET 8 SDK** (`brew install --cask dotnet-sdk`) 또는 Mono (`brew install mono`) |
+
+어느 런타임이든 같은 소리를 냅니다(엔진 테스트를 Mono와 .NET 양쪽에서 실행). 런타임이 없어도 MIDI와 악보는 만들 수 있습니다(`render --score-only`).
 PDF 악보는 선택 사항: [MuseScore](https://musescore.org).
 
 Claude Code에서:
@@ -29,8 +37,9 @@ Claude Code에서:
 /plugin marketplace add 39nhs/notewright
 /plugin install notewright@notewright
 ```
-Claude Code 전용입니다: 렌더러를 내 컴퓨터(또는 Claude Code 세션의 컨테이너)에서 Python과 Mono/.NET으로 실행하므로
-claude.ai·Cowork의 웹 환경에서는 렌더링이 동작하지 않을 수 있습니다.
+claude.ai 채팅·Cowork에서는 **Customize → Plugins**에서 마켓플레이스 `39nhs/notewright`를 추가해 설치합니다. 그곳의 코드 실행
+환경에 .NET이 없으면 Claude가 Ubuntu 패키지 저장소에서 `dotnet-sdk-8.0`을 설치하고, VSCO 2 악기는 github.com에서 git으로 받습니다
+(claude.ai 기본 네트워크 설정 “패키지 관리자만”에서 허용되는 주소들). 설치할 수 없는 환경이면 MIDI와 악보만 만들어 줍니다.
 로컬 클론으로 시험할 때: `claude --plugin-dir /path/to/notewright`.
 
 설치 후 “신나는 8비트 보스전 BGM 1분짜리 만들어서 wav랑 악보로 줘”처럼 요청하면 `compose-song` 스킬이 동작합니다
@@ -64,7 +73,7 @@ python3 notewright.py render mysong.json --section chorus # 일부만 빠르게
 | `notewright.py`, `notewright/` | Python: 악기 카탈로그(`catalog`, `sfz`, `synthkit`), 스펙 컴파일러(`spec`), 내보내기(`midi`, `musicxml`, `export`), 엔진 빌드/실행(`engine`), CLI |
 | `engine/Runtime/` | 음악 엔진(C#, 재생 버전 V1·V2) — [재생 버전](engine/playback-versions.md) |
 | `engine/Renderer/` | 헤드리스 렌더러: [song.json](engine/song-json.md) → 엔진 → WAV + 리포트 |
-| `engine/Tests/` | 엔진 테스트(재생 지문 포함): `bash engine/run-tests.sh` |
+| `engine/Tests/` | 엔진 테스트(재생 지문 포함): `bash engine/run-tests.sh` (Mono), `NOTEWRIGHT_RUNTIME=dotnet bash engine/run-tests.sh` (.NET) |
 | `data/registry.json` | 다운로드 가능한 라이브러리 목록(VSCO 2 CE, 고정 커밋) — `tools/build_vsco2_registry.py`로 생성 |
 | `examples/`, `tests/` | 예제 스펙, 플러그인 테스트(`python3 -m unittest discover -s tests`) |
 
@@ -72,8 +81,13 @@ python3 notewright.py render mysong.json --section chorus # 일부만 빠르게
 
 플러그인은 아래만 내려받고, 사용자 데이터를 외부로 보내지 않습니다.
 
-- `doctor`/첫 렌더: C# 컴파일러 Roslyn 4.8.0 패키지 1회 — `https://api.nuget.org/v3-flatcontainer/microsoft.net.compilers.toolset/`
-- VSCO 2 CE 악기: 곡에 쓰는 샘플만 — `https://raw.githubusercontent.com/sgossner/VSCO-2-CE/<고정 커밋>/`
+- Mono·.NET Framework로 렌더할 때만, 첫 렌더에 C# 컴파일러 Roslyn 4.8.0 패키지 1회 —
+  `https://api.nuget.org/v3-flatcontainer/microsoft.net.compilers.toolset/` (.NET SDK는 자체 컴파일러를 써서 받지 않음)
+- VSCO 2 CE 악기: 곡에 쓰는 샘플만 — `https://raw.githubusercontent.com/sgossner/VSCO-2-CE/<고정 커밋>/`, 이 주소가 막혀 있으면
+  같은 커밋을 git으로 `https://github.com/sgossner/VSCO-2-CE`에서 (필요한 파일만 받는 임시 저장소, 받은 뒤 삭제)
+- `doctor`는 위 악기 주소에 접속되는지 확인합니다(작은 파일 1개 요청, 또는 `git ls-remote`).
+- 플러그인이 시스템 패키지를 직접 설치하지는 않습니다. claude.ai·Cowork 같은 일회용 실행 환경에서는 스킬 안내에 따라 Claude가
+  `dotnet-sdk-8.0`을 OS 패키지 저장소에서 설치할 수 있고, 내 컴퓨터에서는 설치 명령을 알려 주기만 합니다.
 - 위 파일과 빌드된 렌더러, 악기 카탈로그는 `~/.notewright`(`NOTEWRIGHT_HOME`)에 저장합니다. 렌더 결과는 스펙 폴더의 `out/`에 씁니다.
 - `instruments scan`은 사용자가 지정한 폴더만 읽습니다. `render --pdf`는 설치된 MuseScore를 실행합니다.
 

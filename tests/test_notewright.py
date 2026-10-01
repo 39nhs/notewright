@@ -236,10 +236,15 @@ class Exports(unittest.TestCase):
 
 
 def _engine_available():
-    return shutil.which("mono") is not None or os.name == "nt"
+    from notewright import engine
+    try:
+        engine.runtime()
+        return True
+    except engine.EngineError:
+        return False
 
 
-@unittest.skipUnless(_engine_available(), "needs Mono (Linux/macOS) or .NET Framework (Windows)")
+@unittest.skipUnless(_engine_available(), "needs the .NET SDK, Mono (Linux/macOS) or .NET Framework (Windows)")
 class Render(unittest.TestCase):
     def test_render_cli(self):
         from notewright import cli
@@ -263,6 +268,43 @@ class Render(unittest.TestCase):
         self.assertTrue(all((unity.parent / "Samples" / p["sample"]).exists() for p in song["parts"]))
         self.assertTrue((unity.parent / "CREDITS.md").exists())
         self.assertTrue(Path(result["files"]["midi"]).exists() and Path(result["files"]["musicxml"]).exists())
+
+
+class Manifest(unittest.TestCase):
+    def test_version_matches_plugin_json(self):
+        import notewright
+        manifest = json.loads((Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(notewright.__version__, manifest["version"])
+
+
+class Runtime(unittest.TestCase):
+    def test_choice(self):
+        from notewright import engine
+        old = os.environ.get("NOTEWRIGHT_RUNTIME")
+        try:
+            os.environ["NOTEWRIGHT_RUNTIME"] = "nonsense"
+            with self.assertRaises(engine.EngineError):
+                engine.runtime()
+        finally:
+            if old is None:
+                os.environ.pop("NOTEWRIGHT_RUNTIME", None)
+            else:
+                os.environ["NOTEWRIGHT_RUNTIME"] = old
+
+
+@unittest.skipUnless(os.environ.get("NOTEWRIGHT_NETWORK_TESTS"), "set NOTEWRIGHT_NETWORK_TESTS=1 (downloads from github.com)")
+class GitDownload(unittest.TestCase):
+    def test_fetch_over_git(self):
+        """The fallback for networks without raw.githubusercontent.com: only github.com over git."""
+        os.environ["NOTEWRIGHT_DOWNLOAD"] = "git"
+        try:
+            self.assertEqual(catalog.downloads(), "git")
+            entry = catalog.fetch("vsco2:timpani", quiet=True)
+        finally:
+            os.environ.pop("NOTEWRIGHT_DOWNLOAD", None)
+        self.assertEqual(entry["status"], "installed")
+        for region in entry["regions"]:
+            self.assertGreater(wavinfo.info(region["sample"])["seconds"], 0)
 
 
 if __name__ == "__main__":

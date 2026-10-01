@@ -20,9 +20,20 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
 
 ## Workflow
 
-1. **First use:** `doctor`. It needs Python 3.9+, and Mono on Linux/macOS (`sudo apt install mono-devel` / `brew install mono`);
-   Windows uses its built-in .NET Framework. The first run downloads the C# compiler (~10 MB, once) and builds the renderer.
-   If it reports a problem, tell the user exactly what to install.
+1. **First use:** `doctor`. It reports the runtime that renders audio (`runtime`), how instruments download
+   (`instrumentDownloads`) and, if rendering is not possible, `error` and `fix`. The renderer runs on the .NET 6+ SDK
+   (`dotnet`), Mono, or Windows' built-in .NET Framework; with Mono or .NET Framework the first run downloads the C# compiler
+   (~10 MB, once).
+   - **On the user's own computer:** if `ok` is false, tell the user the `fix` command; don't install system packages yourself
+     unless they say so.
+   - **In a disposable sandbox** (claude.ai chat, Cowork, a cloud session): if `ok` is false and you can install packages,
+     install the .NET 8 SDK from the OS package archive and run `doctor` again — Debian/Ubuntu:
+     `apt-get update && apt-get install -y --no-install-recommends dotnet-sdk-8.0` (prefix `sudo` when not root).
+   - **No runtime at all:** still deliver the music: `render <spec> --score-only` writes the MIDI and MusicXML score without
+     the renderer. Say the WAV needs .NET or Mono (Claude Code on a computer, or a sandbox that can install packages).
+   - `instrumentDownloads`: `https`, or `git` when only github.com is reachable (handled automatically, git must be installed).
+     If it is unavailable, use built-in synths (`synth:*`) and the user's own instruments, and say that VSCO 2 needs network
+     access to github.com (on claude.ai: code execution network access "package managers" or wider).
 2. **Understand the brief:** genre, mood, tempo, length, key, instruments, output formats (WAV / stems / MIDI / sheet music
    PDF / Unity). Ask only about what you cannot reasonably choose yourself; otherwise decide and say what you chose.
 3. **Pick instruments** (see [reference/instruments.md](reference/instruments.md)):
@@ -64,6 +75,8 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
   reverb, EQ bands, automation curves or per-note pitch bend; use echo, filters, drive, compressor, gate and glitch regions.
 - Engine limits per song: 32 engine parts (each track uses one part per sample zone or drum sound actually played, plus additive
   noise regions), 1024 simultaneous voices, 10–60000 BPM. `check` reports the part count and reduces sample zones automatically.
+- In a sandbox the user cannot open your file paths: render with `--out` into the folder your environment shares with the user
+  (for example its outputs folder), or copy the deliverables there.
 - Don't overwrite a user's spec or output without asking; write new files or versioned names (`song-v2.json`).
 - Credit instrument sources when delivering. Files from the user's own libraries keep their own licenses.
 - If the user wants the song inside the Unity game project, deliver `--unity` output and point to `SongJsonBuilder.Build`
