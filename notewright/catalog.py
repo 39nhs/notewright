@@ -3,10 +3,14 @@ scanned from folders on this computer (SFZ files, note-named WAV sets, drum one-
 
 An instrument entry is a list of sample regions: {sample, lo, hi, key (root), lovel, hivel, volume dB, seq}. The engine plays
 one sample per part, so a song uses only the regions its notes need (see choose_regions)."""
+import http.client
 import json
+import os
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -98,6 +102,93 @@ def _download(url, target: Path):
     temp.replace(target)
 
 
+_https_blocked = set()          # libraries whose https host failed in this run: go straight to git
+
+
+def _git(*args, timeout=600):
+    git = shutil.which("git")
+    if not git:
+        raise CatalogError("git is not installed")
+    result = subprocess.run([git, "-c", "core.autocrlf=false", "--literal-pathspecs", *args], capture_output=True, text=True,
+                            timeout=timeout)
+    if result.returncode != 0:
+        raise CatalogError(f"git {args[0] if args[0] != '-C' else args[2]} failed: {(result.stderr or result.stdout).strip()[-800:]}")
+    return result.stdout
+
+
+def _git_checkout(library_id, library, folder: Path, relatives):
+    """Downloads files of a pinned library commit over git (github.com) instead of https (raw.githubusercontent.com), for
+    networks that allow only the first, such as claude.ai's sandbox. A blobless partial clone fetches only the files asked for."""
+    if not library.get("git") or not library.get("commit"):
+        raise CatalogError(f"{library_id}: https download failed and the library has no git source")
+    (paths.home() / "git").mkdir(exist_ok=True)       # temporary repo: the files end up in the library folder, not twice on disk
+    repo = Path(tempfile.mkdtemp(prefix=library_id + "-", dir=paths.home() / "git"))
+    try:
+        _git("init", "-q", str(repo))
+        _git("-C", str(repo), "remote", "add", "origin", library["git"])
+        _git("-C", str(repo), "fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", library["commit"])
+        folder.mkdir(parents=True, exist_ok=True)
+        for i in range(0, len(relatives), 100):      # keeps the command line short on Windows
+            _git("-C", str(repo), f"--work-tree={folder}", "checkout", library["commit"], "--", *relatives[i:i + 100])
+    finally:
+        shutil.rmtree(repo, onerror=_make_writable_and_retry)
+
+
+def _make_writable_and_retry(function, path, _):
+    """git marks its pack files read-only, which stops rmtree on Windows."""
+    try:
+        os.chmod(path, 0o700)
+        function(path)
+    except OSError:
+        pass
+
+
+def _get_files(library_id, folder: Path, relatives, label="", quiet=False):
+    """Makes sure the library files (paths relative to its folder) exist locally: https first, then git."""
+    library = registry()["libraries"][library_id]
+    missing = [r for r in relatives if not (folder / r).exists()]
+    if not missing:
+        return
+    if os.environ.get("NOTEWRIGHT_DOWNLOAD") != "git" and library_id not in _https_blocked:
+        try:
+            for i, relative in enumerate(missing):
+                if not quiet and label:
+                    print(f"  {label}: {i + 1}/{len(missing)} {relative}", file=sys.stderr)
+                _download(library["raw"] + urllib.parse.quote(relative), folder / relative)
+            return
+        except (OSError, http.client.HTTPException) as error:
+            _https_blocked.add(library_id)
+            if not quiet:
+                print(f"  https download failed ({error}); trying git from {library.get('git') or 'nowhere'}", file=sys.stderr)
+            missing = [r for r in missing if not (folder / r).exists()]
+    if not quiet and label:
+        print(f"  {label}: {len(missing)} file(s) over git", file=sys.stderr)
+    try:
+        _git_checkout(library_id, library, folder, missing)
+    except (CatalogError, OSError, subprocess.SubprocessError) as error:
+        raise CatalogError(f"could not download {library_id} files ({error}). Allow access to raw.githubusercontent.com, or to "
+                           "github.com with git installed; built-in synths and your own instruments work offline.") from error
+
+
+def downloads():
+    """How registry libraries can be downloaded here: "https", "git" (github.com only) or None."""
+    reg = registry()
+    library_id, library = next(iter(reg["libraries"].items()))
+    if os.environ.get("NOTEWRIGHT_DOWNLOAD") != "git":
+        probe = next(e["sfz"] for e in reg["instruments"] if e["library"] == library_id)
+        try:
+            with urllib.request.urlopen(library["raw"] + urllib.parse.quote(probe), timeout=10) as response:
+                response.read(1)
+            return "https"
+        except (OSError, http.client.HTTPException):
+            pass
+    try:
+        _git("ls-remote", "-q", library["git"], "HEAD", timeout=30)
+        return "git"
+    except (CatalogError, KeyError, OSError, subprocess.SubprocessError):
+        return None
+
+
 def _layer(regions, velocity):
     """Keeps one velocity layer and the first round robin per key zone."""
     zones = {}
@@ -119,19 +210,13 @@ def fetch(instrument_id, velocity=100, all_layers=False, quiet=False):
     library = registry()["libraries"][entry["library"]]
     folder = paths.home() / "libraries" / entry["library"]
     sfz_path = folder / entry["sfz"]
-    if not sfz_path.exists():
-        _download(library["raw"] + urllib.parse.quote(entry["sfz"]), sfz_path)
+    _get_files(entry["library"], folder, [entry["sfz"]], quiet=quiet)
     regions = sfz.parse(sfz_path)
     if not regions:
         raise CatalogError(f"{instrument_id}: no playable regions in {entry['sfz']}")
     keep = regions if all_layers else _layer(regions, velocity)
-    for i, r in enumerate(keep):
-        sample = Path(r["sample"])
-        if not sample.exists():
-            relative = sample.relative_to(folder.resolve()).as_posix()
-            if not quiet:
-                print(f"  {instrument_id}: {i + 1}/{len(keep)} {relative}", file=sys.stderr)
-            _download(library["raw"] + urllib.parse.quote(relative), sample)
+    _get_files(entry["library"], folder.resolve(), [Path(r["sample"]).relative_to(folder.resolve()).as_posix() for r in keep],
+               label=instrument_id, quiet=quiet)
     attack = next((r["attack"] for r in keep if r.get("attack") is not None), .005)
     release = next((r["release"] for r in keep if r.get("release") is not None), .3)
     installed = {k: entry[k] for k in ("id", "name", "kind", "tags", "description")}

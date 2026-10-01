@@ -55,7 +55,8 @@ def main(clone, commit):
         "name": "VS Chamber Orchestra: Community Edition (VSCO 2 CE)", "license": "CC0-1.0",
         "credit": "Versilian Studios; recorded by Sam Gossner & Simon Dalzell (credit encouraged, not required)",
         "homepage": "https://github.com/sgossner/VSCO-2-CE",
-        "raw": f"https://raw.githubusercontent.com/sgossner/VSCO-2-CE/{commit}/"}}, "instruments": entries}
+        "raw": f"https://raw.githubusercontent.com/sgossner/VSCO-2-CE/{commit}/",
+        "git": "https://github.com/sgossner/VSCO-2-CE", "commit": commit}}, "instruments": entries}
     out = Path(__file__).resolve().parent.parent / "data" / "registry.json"
     out.write_text(json.dumps(registry, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"{len(entries)} instruments → {out}")

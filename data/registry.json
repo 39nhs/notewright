@@ -5,7 +5,9 @@
    "license": "CC0-1.0",
    "credit": "Versilian Studios; recorded by Sam Gossner & Simon Dalzell (credit encouraged, not required)",
    "homepage": "https://github.com/sgossner/VSCO-2-CE",
-   "raw": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/6dd651d55dde97fd4028699be9d4481f26917891/"
+   "raw": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/6dd651d55dde97fd4028699be9d4481f26917891/",
+   "git": "https://github.com/sgossner/VSCO-2-CE",
+   "commit": "6dd651d55dde97fd4028699be9d4481f26917891"
   }
  },
  "instruments": [

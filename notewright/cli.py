@@ -63,6 +63,9 @@ def cmd_doctor(args):
     info["home"] = str(paths.home())
     info["musescore"] = export.musescore()
     info["installedInstruments"] = len(catalog.load()["instruments"])
+    info["instrumentDownloads"] = catalog.downloads() or "unavailable: only built-in synths and instruments on this computer"
+    if not info["ok"]:
+        info["withoutRenderer"] = "render --score-only still writes the MIDI and MusicXML score"
     _print(info)
     return 0 if info["ok"] else 1
 
@@ -243,7 +246,7 @@ def cmd_convert(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="notewright", description=f"notewright {__version__}: compose with the com.graze.music engine")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("doctor", help="check Python, .NET/Mono, the renderer build and MuseScore")
+    sub.add_parser("doctor", help="check Python, .NET/Mono, the renderer build, instrument downloads and MuseScore")
     p = sub.add_parser("instruments", help="list / find / fetch / scan / add / info / remove instruments")
     p.add_argument("action", choices=["list", "find", "fetch", "scan", "add", "info", "remove"])
     p.add_argument("terms", nargs="*")
