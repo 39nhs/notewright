@@ -1,0 +1,10 @@
+{
+  "name": "notewright",
+  "version": "0.1.1",
+  "description": "Compose, arrange and mix songs with the com.graze.music engine (playback V2) and export WAV, stems, MIDI, MusicXML/PDF score and Unity song folders. Finds instruments automatically (built-in synths, VSCO 2 CE orchestral samples) or uses SFZ/WAV instruments on your computer.",
+  "author": {"name": "39nhs"},
+  "homepage": "https://github.com/39nhs/notewright",
+  "repository": "https://github.com/39nhs/notewright",
+  "license": "GPL-3.0-only",
+  "keywords": ["music", "composition", "audio", "wav", "midi", "musicxml", "sfz", "unity"]
+}

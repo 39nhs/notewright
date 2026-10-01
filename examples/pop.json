@@ -1,0 +1,56 @@
+// notewright song spec (JSON; // comments and trailing commas are allowed). Reference: skills/compose-song/reference/spec.md
+{
+  "title": "Night Drive",
+  "bpm": 104,
+  "meter": 4,
+  "key": "A minor",
+  "playbackVersion": 2,
+
+  // alias → instrument: an id ("synth:pad", "vsco2:harp", "local:mylib/x"), "find:<words>", or {"use": "file:/x.wav", "root": "C4"}
+  "instruments": {
+    "keys": "synth:epiano",
+    "pad": "synth:pad",
+    "bass": "synth:sub-bass",
+    "lead": "synth:square-lead",
+    "drums": "synth:drum-kit"
+  },
+
+  // gain 0-1, pan -1..1, attack/release seconds; effects = per-track mixer (same fields as master)
+  "tracks": {
+    "drums": {"instrument": "drums", "gain": 0.55},
+    "bass":  {"instrument": "bass", "layer": "Bass", "gain": 0.55, "release": 0.08, "glide": 0.06},
+    "keys":  {"instrument": "keys", "layer": "Harmony", "gain": 0.30, "pan": -0.2, "release": 0.4},
+    "pad":   {"instrument": "pad", "layer": "Harmony", "gain": 0.16, "pan": 0.2, "attack": 0.4, "release": 1.2,
+              "effects": {"LowPassHz": 3500}},
+    "lead":  {"instrument": "lead", "gain": 0.20, "pan": 0.1, "release": 0.15,
+              "effects": {"EchoWet": 0.22, "EchoSeconds": 0.43, "EchoFeedback": 0.35, "LowPassHz": 6000}}
+  },
+
+  "patterns": {
+    // drum grid: one character per step (default 0.25 beat). X accent, x hit, o soft, g ghost, . rest; | and spaces ignored
+    "beat":     {"drums": {"kick":  "x... .... x.x. ....",
+                           "snare": ".... x... .... x...",
+                           "hat":   "x.o. x.o. x.o. x.o."}},
+    "beat-fill":{"drums": {"kick":  "x... .... x.x. ....",
+                           "snare": ".... x... ..o. xxXX",
+                           "hat":   "x.o. x.o. x.o. ...."}},
+    "hats":     {"drums": {"hat":   "x.o. x.o. x.o. x.o."}},
+    // events: "beat duration pitch[,pitch…] [@velocity]" separated by | ; or new lines
+    "chords":   {"bars": 4, "notes": "0 4 A3,C4,E4 @0.8 | 4 4 F3,A3,C4 @0.75 | 8 4 C4,E4,G4 @0.8 | 12 4 G3,B3,D4 @0.75"},
+    "bassline": {"bars": 4, "notes": "0 1.5 A1 | 1.5 0.5 A1 @0.7 | 2 2 A1 | 4 1.5 F1 | 5.5 0.5 F1 @0.7 | 6 2 F1 | 8 1.5 C2 | 9.5 0.5 C2 @0.7 | 10 2 C2 | 12 1.5 G1 | 13.5 0.5 G1 @0.7 | 14 1 G1 | 15 1 B1"},
+    // melody: sequential "pitch:duration" tokens; r = rest; C4+E4 = chord; @0.7 velocity; a bare pitch reuses the last duration
+    "hook":     {"bars": 4, "melody": "r:0.5 E5:0.5 A5:1 G5:0.5 E5:1.5 | r:0.5 C5:0.5 F5:1 E5:0.5 C5:1.5 | r:0.5 E5:0.5 G5:1 A5:0.5 B5:1 C6:0.5 | B5:2 G5:1 r:1"}
+  },
+
+  // sections play patterns per track; a pattern repeats to fill the section; a list plays in order
+  "sections": [
+    {"name": "intro",  "bars": 4, "play": {"pad": "chords", "drums": "hats"}},
+    {"name": "verse",  "bars": 8, "play": {"pad": "chords", "keys": "chords", "bass": "bassline", "drums": ["beat", "beat", "beat", "beat-fill"]}},
+    {"name": "chorus", "bars": 8, "play": {"pad": "chords", "keys": {"pattern": "chords", "octave": 1, "velocity": 0.8},
+                                           "bass": "bassline", "lead": "hook", "drums": ["beat", "beat", "beat", "beat-fill"]}},
+    {"name": "outro",  "bars": 4, "play": {"pad": "chords", "keys": "chords"}}
+  ],
+
+  "master": {"Compressor": true, "ThresholdDb": -14, "Ratio": 3, "OutputDb": 0},
+  "output": {"rate": 48000, "bits": 24, "tail": 3, "normalize": -1}
+}

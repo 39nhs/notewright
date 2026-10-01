@@ -1,0 +1,1246 @@
+{
+ "libraries": {
+  "vsco2": {
+   "name": "VS Chamber Orchestra: Community Edition (VSCO 2 CE)",
+   "license": "CC0-1.0",
+   "credit": "Versilian Studios; recorded by Sam Gossner & Simon Dalzell (credit encouraged, not required)",
+   "homepage": "https://github.com/sgossner/VSCO-2-CE",
+   "raw": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/6dd651d55dde97fd4028699be9d4481f26917891/"
+  }
+ },
+ "instruments": [
+  {
+   "id": "vsco2:bassoon-stac",
+   "name": "BassoonStac",
+   "library": "vsco2",
+   "sfz": "BassoonStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bassoon",
+    "low",
+    "orchestral",
+    "reed",
+    "short",
+    "staccato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — BassoonStac"
+  },
+  {
+   "id": "vsco2:bassoon-sus",
+   "name": "BassoonSus",
+   "library": "vsco2",
+   "sfz": "BassoonSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bassoon",
+    "legato",
+    "low",
+    "orchestral",
+    "reed",
+    "sustained",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — BassoonSus"
+  },
+  {
+   "id": "vsco2:bassoon-vib",
+   "name": "BassoonVib",
+   "library": "vsco2",
+   "sfz": "BassoonVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bassoon",
+    "low",
+    "orchestral",
+    "reed",
+    "sustained",
+    "vibrato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — BassoonVib"
+  },
+  {
+   "id": "vsco2:cello-ens-pizz",
+   "name": "CelloEnsPizz",
+   "library": "vsco2",
+   "sfz": "CelloEnsPizz.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "cello",
+    "ensemble",
+    "orchestral",
+    "pizzicato",
+    "plucked",
+    "section",
+    "short",
+    "strings",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — CelloEnsPizz"
+  },
+  {
+   "id": "vsco2:cello-ens-spic",
+   "name": "CelloEnsSpic",
+   "library": "vsco2",
+   "sfz": "CelloEnsSpic.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "cello",
+    "ensemble",
+    "orchestral",
+    "section",
+    "short",
+    "spiccato",
+    "strings",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — CelloEnsSpic"
+  },
+  {
+   "id": "vsco2:cello-ens-sus-vib-quiet",
+   "name": "CelloEnsSusVib-Quiet",
+   "library": "vsco2",
+   "sfz": "CelloEnsSusVib-Quiet.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "cello",
+    "ensemble",
+    "legato",
+    "orchestral",
+    "quiet",
+    "section",
+    "soft",
+    "strings",
+    "sustained",
+    "vibrato",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — CelloEnsSusVib-Quiet"
+  },
+  {
+   "id": "vsco2:cello-ens-sus-vib",
+   "name": "CelloEnsSusVib",
+   "library": "vsco2",
+   "sfz": "CelloEnsSusVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "cello",
+    "ensemble",
+    "legato",
+    "orchestral",
+    "section",
+    "strings",
+    "sustained",
+    "vibrato",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — CelloEnsSusVib"
+  },
+  {
+   "id": "vsco2:cello-ens-trem",
+   "name": "CelloEnsTrem",
+   "library": "vsco2",
+   "sfz": "CelloEnsTrem.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "cello",
+    "ensemble",
+    "orchestral",
+    "section",
+    "strings",
+    "tremolo",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — CelloEnsTrem"
+  },
+  {
+   "id": "vsco2:clarinet-stac",
+   "name": "ClarinetStac",
+   "library": "vsco2",
+   "sfz": "ClarinetStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "clarinet",
+    "orchestral",
+    "reed",
+    "short",
+    "staccato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — ClarinetStac"
+  },
+  {
+   "id": "vsco2:clarinet-sus",
+   "name": "ClarinetSus",
+   "library": "vsco2",
+   "sfz": "ClarinetSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "clarinet",
+    "legato",
+    "orchestral",
+    "reed",
+    "sustained",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — ClarinetSus"
+  },
+  {
+   "id": "vsco2:contrabass-pizz",
+   "name": "ContrabassPizz",
+   "library": "vsco2",
+   "sfz": "ContrabassPizz.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bass",
+    "contrabass",
+    "double bass",
+    "orchestral",
+    "pizzicato",
+    "plucked",
+    "short",
+    "strings",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ContrabassPizz"
+  },
+  {
+   "id": "vsco2:contrabass-spic",
+   "name": "ContrabassSpic",
+   "library": "vsco2",
+   "sfz": "ContrabassSpic.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bass",
+    "contrabass",
+    "double bass",
+    "orchestral",
+    "short",
+    "spiccato",
+    "strings",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ContrabassSpic"
+  },
+  {
+   "id": "vsco2:contrabass-sus-nv",
+   "name": "ContrabassSusNV",
+   "library": "vsco2",
+   "sfz": "ContrabassSusNV.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bass",
+    "contrabass",
+    "double bass",
+    "legato",
+    "no vibrato",
+    "orchestral",
+    "strings",
+    "sustained",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ContrabassSusNV"
+  },
+  {
+   "id": "vsco2:contrabass-sus-vb-quiet",
+   "name": "ContrabassSusVB-Quiet",
+   "library": "vsco2",
+   "sfz": "ContrabassSusVB-Quiet.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bass",
+    "contrabass",
+    "double bass",
+    "legato",
+    "orchestral",
+    "quiet",
+    "soft",
+    "strings",
+    "sustained",
+    "vibrato",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ContrabassSusVB-Quiet"
+  },
+  {
+   "id": "vsco2:contrabass-sus-vb",
+   "name": "ContrabassSusVB",
+   "library": "vsco2",
+   "sfz": "ContrabassSusVB.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bass",
+    "contrabass",
+    "double bass",
+    "legato",
+    "orchestral",
+    "strings",
+    "sustained",
+    "vibrato",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ContrabassSusVB"
+  },
+  {
+   "id": "vsco2:contrabass-trem",
+   "name": "ContrabassTrem",
+   "library": "vsco2",
+   "sfz": "ContrabassTrem.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bass",
+    "contrabass",
+    "double bass",
+    "orchestral",
+    "strings",
+    "tremolo",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ContrabassTrem"
+  },
+  {
+   "id": "vsco2:french-horn-mute",
+   "name": "FHornMute",
+   "library": "vsco2",
+   "sfz": "FHornMute.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "french horn",
+    "horn",
+    "muted",
+    "orchestral",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — FHornMute"
+  },
+  {
+   "id": "vsco2:french-horn-stac",
+   "name": "FHornStac",
+   "library": "vsco2",
+   "sfz": "FHornStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "french horn",
+    "horn",
+    "orchestral",
+    "short",
+    "staccato",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — FHornStac"
+  },
+  {
+   "id": "vsco2:french-horn-sus",
+   "name": "FHornSus",
+   "library": "vsco2",
+   "sfz": "FHornSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "french horn",
+    "horn",
+    "legato",
+    "orchestral",
+    "sustained",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — FHornSus"
+  },
+  {
+   "id": "vsco2:flute-exp-vib",
+   "name": "FluteExpVib",
+   "library": "vsco2",
+   "sfz": "FluteExpVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "expressive",
+    "flute",
+    "orchestral",
+    "sustained",
+    "vibrato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — FluteExpVib"
+  },
+  {
+   "id": "vsco2:flute-stac",
+   "name": "FluteStac",
+   "library": "vsco2",
+   "sfz": "FluteStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "flute",
+    "orchestral",
+    "short",
+    "staccato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — FluteStac"
+  },
+  {
+   "id": "vsco2:flute-sus-nv",
+   "name": "FluteSusNV",
+   "library": "vsco2",
+   "sfz": "FluteSusNV.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "flute",
+    "legato",
+    "no vibrato",
+    "orchestral",
+    "sustained",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — FluteSusNV"
+  },
+  {
+   "id": "vsco2:flute-sus-vib",
+   "name": "FluteSusVib",
+   "library": "vsco2",
+   "sfz": "FluteSusVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "flute",
+    "legato",
+    "orchestral",
+    "sustained",
+    "vibrato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — FluteSusVib"
+  },
+  {
+   "id": "vsco2:orchestral-kit",
+   "name": "GM-StylePerc",
+   "library": "vsco2",
+   "sfz": "GM-StylePerc.sfz",
+   "kind": "drums",
+   "tags": [
+    "acoustic",
+    "drums",
+    "kit",
+    "orchestral",
+    "orchestral percussion",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — GM-StylePerc"
+  },
+  {
+   "id": "vsco2:glockenspiel",
+   "name": "Glockenspiel",
+   "library": "vsco2",
+   "sfz": "Glockenspiel.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bell",
+    "glockenspiel",
+    "mallet",
+    "orchestral",
+    "percussion",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — Glockenspiel"
+  },
+  {
+   "id": "vsco2:harp",
+   "name": "Harp",
+   "library": "vsco2",
+   "sfz": "Harp.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "harp",
+    "orchestral",
+    "plucked",
+    "strings",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — Harp"
+  },
+  {
+   "id": "vsco2:marimba",
+   "name": "Marimba",
+   "library": "vsco2",
+   "sfz": "Marimba.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "mallet",
+    "marimba",
+    "orchestral",
+    "percussion",
+    "vsco2",
+    "wood"
+   ],
+   "description": "VSCO 2 Community Edition — Marimba"
+  },
+  {
+   "id": "vsco2:oboe-stac",
+   "name": "OboeStac",
+   "library": "vsco2",
+   "sfz": "OboeStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "oboe",
+    "orchestral",
+    "reed",
+    "short",
+    "staccato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — OboeStac"
+  },
+  {
+   "id": "vsco2:oboe-sus-nv",
+   "name": "OboeSusNV",
+   "library": "vsco2",
+   "sfz": "OboeSusNV.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "legato",
+    "no vibrato",
+    "oboe",
+    "orchestral",
+    "reed",
+    "sustained",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — OboeSusNV"
+  },
+  {
+   "id": "vsco2:oboe-sus-vib",
+   "name": "OboeSusVib",
+   "library": "vsco2",
+   "sfz": "OboeSusVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "legato",
+    "oboe",
+    "orchestral",
+    "reed",
+    "sustained",
+    "vibrato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — OboeSusVib"
+  },
+  {
+   "id": "vsco2:organ-loud",
+   "name": "OrganLoud",
+   "library": "vsco2",
+   "sfz": "OrganLoud.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "church",
+    "keys",
+    "loud",
+    "orchestral",
+    "organ",
+    "pipe organ",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — OrganLoud"
+  },
+  {
+   "id": "vsco2:organ-loud-pedal",
+   "name": "OrganLoudPedal",
+   "library": "vsco2",
+   "sfz": "OrganLoudPedal.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "church",
+    "keys",
+    "loud",
+    "low",
+    "orchestral",
+    "organ",
+    "pedal",
+    "pipe organ",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — OrganLoudPedal"
+  },
+  {
+   "id": "vsco2:organ-quiet",
+   "name": "OrganQuiet",
+   "library": "vsco2",
+   "sfz": "OrganQuiet.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "church",
+    "keys",
+    "orchestral",
+    "organ",
+    "pipe organ",
+    "quiet",
+    "soft",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — OrganQuiet"
+  },
+  {
+   "id": "vsco2:organ-quiet-pedal",
+   "name": "OrganQuietPedal",
+   "library": "vsco2",
+   "sfz": "OrganQuietPedal.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "church",
+    "keys",
+    "low",
+    "orchestral",
+    "organ",
+    "pedal",
+    "pipe organ",
+    "quiet",
+    "soft",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — OrganQuietPedal"
+  },
+  {
+   "id": "vsco2:piccolo-stac",
+   "name": "PiccoloStac",
+   "library": "vsco2",
+   "sfz": "PiccoloStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "flute",
+    "orchestral",
+    "piccolo",
+    "short",
+    "staccato",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — PiccoloStac"
+  },
+  {
+   "id": "vsco2:piccolo-sus",
+   "name": "PiccoloSus",
+   "library": "vsco2",
+   "sfz": "PiccoloSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "flute",
+    "legato",
+    "orchestral",
+    "piccolo",
+    "sustained",
+    "vsco2",
+    "woodwind"
+   ],
+   "description": "VSCO 2 Community Edition — PiccoloSus"
+  },
+  {
+   "id": "vsco2:solo-violin-pizz",
+   "name": "SViolinPizz",
+   "library": "vsco2",
+   "sfz": "SViolinPizz.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "orchestral",
+    "pizzicato",
+    "plucked",
+    "short",
+    "solo",
+    "strings",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — SViolinPizz"
+  },
+  {
+   "id": "vsco2:solo-violin-spic",
+   "name": "SViolinSpic",
+   "library": "vsco2",
+   "sfz": "SViolinSpic.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "orchestral",
+    "short",
+    "solo",
+    "spiccato",
+    "strings",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — SViolinSpic"
+  },
+  {
+   "id": "vsco2:solo-violin-trem",
+   "name": "SViolinTrem",
+   "library": "vsco2",
+   "sfz": "SViolinTrem.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "orchestral",
+    "solo",
+    "strings",
+    "tremolo",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — SViolinTrem"
+  },
+  {
+   "id": "vsco2:solo-violin-vib-quiet",
+   "name": "SViolinVib-Quiet",
+   "library": "vsco2",
+   "sfz": "SViolinVib-Quiet.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "orchestral",
+    "quiet",
+    "soft",
+    "solo",
+    "strings",
+    "sustained",
+    "vibrato",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — SViolinVib-Quiet"
+  },
+  {
+   "id": "vsco2:solo-violin-vib",
+   "name": "SViolinVib",
+   "library": "vsco2",
+   "sfz": "SViolinVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "orchestral",
+    "solo",
+    "strings",
+    "sustained",
+    "vibrato",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — SViolinVib"
+  },
+  {
+   "id": "vsco2:timpani",
+   "name": "Timpani",
+   "library": "vsco2",
+   "sfz": "Timpani.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "orchestral",
+    "percussion",
+    "timpani",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — Timpani"
+  },
+  {
+   "id": "vsco2:timpani-rolls",
+   "name": "TimpaniRolls",
+   "library": "vsco2",
+   "sfz": "TimpaniRolls.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "orchestral",
+    "percussion",
+    "roll",
+    "timpani",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TimpaniRolls"
+  },
+  {
+   "id": "vsco2:trombone-stac",
+   "name": "TromboneStac",
+   "library": "vsco2",
+   "sfz": "TromboneStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "orchestral",
+    "short",
+    "staccato",
+    "trombone",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TromboneStac"
+  },
+  {
+   "id": "vsco2:trombone-sus",
+   "name": "TromboneSus",
+   "library": "vsco2",
+   "sfz": "TromboneSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "legato",
+    "orchestral",
+    "sustained",
+    "trombone",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TromboneSus"
+  },
+  {
+   "id": "vsco2:trombone-vib",
+   "name": "TromboneVib",
+   "library": "vsco2",
+   "sfz": "TromboneVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "orchestral",
+    "sustained",
+    "trombone",
+    "vibrato",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TromboneVib"
+  },
+  {
+   "id": "vsco2:trumpet-harmon-mute-sus",
+   "name": "TrumpetHarmonMuteSus",
+   "library": "vsco2",
+   "sfz": "TrumpetHarmonMuteSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "harmon",
+    "legato",
+    "muted",
+    "orchestral",
+    "sustained",
+    "trumpet",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TrumpetHarmonMuteSus"
+  },
+  {
+   "id": "vsco2:trumpet-stac",
+   "name": "TrumpetStac",
+   "library": "vsco2",
+   "sfz": "TrumpetStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "orchestral",
+    "short",
+    "staccato",
+    "trumpet",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TrumpetStac"
+  },
+  {
+   "id": "vsco2:trumpet-straight-mute-sus",
+   "name": "TrumpetStraightMuteSus",
+   "library": "vsco2",
+   "sfz": "TrumpetStraightMuteSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "legato",
+    "muted",
+    "orchestral",
+    "sustained",
+    "trumpet",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TrumpetStraightMuteSus"
+  },
+  {
+   "id": "vsco2:trumpet-sus",
+   "name": "TrumpetSus",
+   "library": "vsco2",
+   "sfz": "TrumpetSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "legato",
+    "orchestral",
+    "sustained",
+    "trumpet",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TrumpetSus"
+  },
+  {
+   "id": "vsco2:trumpet-sus-vib",
+   "name": "TrumpetSusVib",
+   "library": "vsco2",
+   "sfz": "TrumpetSusVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "legato",
+    "orchestral",
+    "sustained",
+    "trumpet",
+    "vibrato",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TrumpetSusVib"
+  },
+  {
+   "id": "vsco2:tuba-stac",
+   "name": "TubaStac",
+   "library": "vsco2",
+   "sfz": "TubaStac.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "low",
+    "orchestral",
+    "short",
+    "staccato",
+    "tuba",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TubaStac"
+  },
+  {
+   "id": "vsco2:tuba-sus",
+   "name": "TubaSus",
+   "library": "vsco2",
+   "sfz": "TubaSus.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "brass",
+    "legato",
+    "low",
+    "orchestral",
+    "sustained",
+    "tuba",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TubaSus"
+  },
+  {
+   "id": "vsco2:tubular-bells",
+   "name": "TubularBells",
+   "library": "vsco2",
+   "sfz": "TubularBells.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "bell",
+    "chimes",
+    "orchestral",
+    "percussion",
+    "tubular bells",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — TubularBells"
+  },
+  {
+   "id": "vsco2:upright-piano",
+   "name": "UprightPiano",
+   "library": "vsco2",
+   "sfz": "UprightPiano.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "keys",
+    "orchestral",
+    "piano",
+    "upright",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — UprightPiano"
+  },
+  {
+   "id": "vsco2:upright-piano2",
+   "name": "VSUpright1",
+   "library": "vsco2",
+   "sfz": "VSUpright1.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "keys",
+    "orchestral",
+    "piano",
+    "upright",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — VSUpright1"
+  },
+  {
+   "id": "vsco2:viola-ens-pizz",
+   "name": "ViolaEnsPizz",
+   "library": "vsco2",
+   "sfz": "ViolaEnsPizz.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "orchestral",
+    "pizzicato",
+    "plucked",
+    "section",
+    "short",
+    "strings",
+    "viola",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolaEnsPizz"
+  },
+  {
+   "id": "vsco2:viola-ens-spic",
+   "name": "ViolaEnsSpic",
+   "library": "vsco2",
+   "sfz": "ViolaEnsSpic.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "orchestral",
+    "section",
+    "short",
+    "spiccato",
+    "strings",
+    "viola",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolaEnsSpic"
+  },
+  {
+   "id": "vsco2:viola-ens-sus-vib-quiet",
+   "name": "ViolaEnsSusVib-Quiet",
+   "library": "vsco2",
+   "sfz": "ViolaEnsSusVib-Quiet.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "legato",
+    "orchestral",
+    "quiet",
+    "section",
+    "soft",
+    "strings",
+    "sustained",
+    "vibrato",
+    "viola",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolaEnsSusVib-Quiet"
+  },
+  {
+   "id": "vsco2:viola-ens-sus-vib",
+   "name": "ViolaEnsSusVib",
+   "library": "vsco2",
+   "sfz": "ViolaEnsSusVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "legato",
+    "orchestral",
+    "section",
+    "strings",
+    "sustained",
+    "vibrato",
+    "viola",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolaEnsSusVib"
+  },
+  {
+   "id": "vsco2:viola-ens-trem",
+   "name": "ViolaEnsTrem",
+   "library": "vsco2",
+   "sfz": "ViolaEnsTrem.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "orchestral",
+    "section",
+    "strings",
+    "tremolo",
+    "viola",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolaEnsTrem"
+  },
+  {
+   "id": "vsco2:violin-ens-pizz",
+   "name": "ViolinEnsPizz",
+   "library": "vsco2",
+   "sfz": "ViolinEnsPizz.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "orchestral",
+    "pizzicato",
+    "plucked",
+    "section",
+    "short",
+    "strings",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolinEnsPizz"
+  },
+  {
+   "id": "vsco2:violin-ens-spic",
+   "name": "ViolinEnsSpic",
+   "library": "vsco2",
+   "sfz": "ViolinEnsSpic.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "orchestral",
+    "section",
+    "short",
+    "spiccato",
+    "strings",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolinEnsSpic"
+  },
+  {
+   "id": "vsco2:violin-ens-sus-vib-quiet",
+   "name": "ViolinEnsSusVib-Quiet",
+   "library": "vsco2",
+   "sfz": "ViolinEnsSusVib-Quiet.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "legato",
+    "orchestral",
+    "quiet",
+    "section",
+    "soft",
+    "strings",
+    "sustained",
+    "vibrato",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolinEnsSusVib-Quiet"
+  },
+  {
+   "id": "vsco2:violin-ens-sus-vib",
+   "name": "ViolinEnsSusVib",
+   "library": "vsco2",
+   "sfz": "ViolinEnsSusVib.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "legato",
+    "orchestral",
+    "section",
+    "strings",
+    "sustained",
+    "vibrato",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolinEnsSusVib"
+  },
+  {
+   "id": "vsco2:violin-ens-trem",
+   "name": "ViolinEnsTrem",
+   "library": "vsco2",
+   "sfz": "ViolinEnsTrem.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "ensemble",
+    "orchestral",
+    "section",
+    "strings",
+    "tremolo",
+    "violin",
+    "vsco2"
+   ],
+   "description": "VSCO 2 Community Edition — ViolinEnsTrem"
+  },
+  {
+   "id": "vsco2:xylophone",
+   "name": "Xylophone",
+   "library": "vsco2",
+   "sfz": "Xylophone.sfz",
+   "kind": "melodic",
+   "tags": [
+    "acoustic",
+    "mallet",
+    "orchestral",
+    "percussion",
+    "vsco2",
+    "xylophone"
+   ],
+   "description": "VSCO 2 Community Edition — Xylophone"
+  }
+ ]
+}

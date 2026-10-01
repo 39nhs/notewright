@@ -1,0 +1,42 @@
+# Plugin checks: engine tests (Linux), Python unit tests with a render through the engine, doctor and an example render.
+name: plugin
+on:
+  push:
+  pull_request:
+jobs:
+  plugin:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      NOTEWRIGHT_HOME: ${{ github.workspace }}/.notewright-home
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Install Mono
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -f /var/lib/man-db/auto-update
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends mono-devel
+      - name: Cache compiler
+        uses: actions/cache@v4
+        with:
+          path: .notewright-home/tools
+          key: roslyn-4.8.0-${{ runner.os }}
+      - name: Engine tests (playback fingerprints)
+        if: runner.os == 'Linux'
+        run: bash engine/run-tests.sh
+      - name: Manifests
+        run: python -c "import json; [json.load(open(f, encoding='utf-8')) for f in ('.claude-plugin/plugin.json', '.claude-plugin/marketplace.json')]"
+      - name: Unit tests (includes a render through the engine)
+        run: python -m unittest discover -s tests -v
+      - name: Doctor
+        run: python notewright.py doctor
+      - name: Render the built-in example
+        run: python notewright.py render examples/pop.json --out out --stems --unity

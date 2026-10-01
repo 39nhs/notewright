@@ -1,0 +1,52 @@
+// Orchestral cue with VS Chamber Orchestra 2 CE samples (CC0). The first render downloads only the samples it needs.
+{
+  "title": "First Light",
+  "bpm": 80,
+  "meter": 3,
+  "key": "D major",
+  "playbackVersion": 2,
+
+  "instruments": {
+    "violins": "vsco2:violin-ens-sus-vib",
+    "cellos":  "vsco2:cello-ens-sus-vib",
+    "basses":  "vsco2:contrabass-pizz",
+    "harp":    "vsco2:harp",
+    "horn":    "vsco2:french-horn-sus",
+    "flute":   "vsco2:flute-sus-vib",
+    "timpani": "vsco2:timpani"
+  },
+
+  "tracks": {
+    "violins": {"instrument": "violins", "layer": "Harmony", "gain": 0.35, "pan": -0.3, "attack": 0.25, "release": 0.8, "splits": 4},
+    "cellos":  {"instrument": "cellos", "layer": "Bass", "gain": 0.35, "pan": 0.3, "attack": 0.2, "release": 0.8, "splits": 3},
+    "basses":  {"instrument": "basses", "layer": "Bass", "gain": 0.8, "pan": 0.2},
+    "harp":    {"instrument": "harp", "layer": "Harmony", "gain": 0.3, "pan": -0.1, "release": 3, "splits": 4},
+    "horn":    {"instrument": "horn", "gain": 0.3, "pan": 0.15, "attack": 0.12, "release": 0.6},
+    "flute":   {"instrument": "flute", "gain": 0.3, "pan": -0.15, "attack": 0.08, "release": 0.5},
+    "timpani": {"instrument": "timpani", "layer": "Drums", "gain": 1.0, "release": 2}
+  },
+
+  "patterns": {
+    // D – Bm – G – A, one chord per 3/4 bar
+    "pad":     {"bars": 4, "notes": "0 3 F#4,A4,D5 @0.6 | 3 3 F#4,B4,D5 @0.6 | 6 3 G4,B4,D5 @0.6 | 9 3 E4,A4,C#5 @0.65"},
+    "low":     {"bars": 4, "notes": "0 3 D3,A3 @0.6 | 3 3 B2,F#3 @0.6 | 6 3 G2,D3 @0.6 | 9 3 A2,E3 @0.65"},
+    "pizz":    {"bars": 4, "melody": "D2:1 r:1 A1:1 | B1:1 r:1 F#1:1 | G1:1 r:1 D2:1 | A1:1 r:1 A1:1"},
+    "arp":     {"bars": 4, "melody": "D4:0.5 A4 D5 F#5 A5 F#5 | B3 F#4 B4 D5 F#5 D5 | G3 D4 G4 B4 D5 B4 | A3 E4 A4 C#5 E5 C#5"},
+    "theme":   {"bars": 4, "melody": "A4:1.5 B4:0.5 A4:1 | F#4:2 D4:1 | G4:1 B4:1 D5:1 | C#5:3"},
+    "theme2":  {"bars": 4, "melody": "D5:1.5 E5:0.5 F#5:1 | B4:2 D5:1 | G5:1.5 F#5:0.5 E5:1 | D5+A4:3"},
+    "roll":    {"bars": 4, "notes": "0 1 D2 @0.7 | 9 0.5 A1 @0.6 | 10.5 0.5 A1 @0.8"}
+  },
+
+  "sections": [
+    {"name": "dawn",  "bars": 4, "play": {"violins": {"pattern": "pad", "velocity": 0.7}, "harp": "arp"}},
+    {"name": "theme", "bars": 8, "play": {"violins": "pad", "cellos": "low", "harp": "arp", "flute": "theme", "basses": "pizz"}},
+    {"name": "rise",  "bars": 8, "play": {"violins": "pad", "cellos": "low", "harp": "arp", "basses": "pizz",
+                                          "horn": ["theme", "theme2"], "flute": {"pattern": "theme2", "octave": 1, "velocity": 0.8},
+                                          "timpani": "roll"}},
+    {"name": "close", "bars": 4, "play": {"violins": {"pattern": "pad", "velocity": 0.6}, "cellos": "low", "harp": "arp"}}
+  ],
+
+  "tempo": [{"section": "close", "bpm": 66, "rampBeats": 12}],
+  "master": {"EchoWet": 0.12, "EchoSeconds": 0.38, "EchoFeedback": 0.4, "Compressor": true, "ThresholdDb": -16, "Ratio": 2.5},
+  "output": {"rate": 48000, "bits": 24, "tail": 4, "normalize": -1}
+}

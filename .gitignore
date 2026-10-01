@@ -1,0 +1,16 @@
+# Build and editor artifacts
+[Oo]bj/
+[Bb]in/
+*.csproj
+*.sln
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
+__pycache__/
+
+# Renders and test data (never commit audio or downloaded libraries)
+examples/out/
+/out/
+.notewright-home/
+*.wav

@@ -1,0 +1,13 @@
+# Keep diffs to real changes: same encoding and line endings everywhere; match each file's existing style.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+
+[*.{cs,md,json,py,sh,yml}]
+insert_final_newline = true
+indent_style = space
+
+[*.{cs,py}]
+indent_size = 4
