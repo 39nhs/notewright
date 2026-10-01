@@ -269,6 +269,36 @@ class Render(unittest.TestCase):
         self.assertTrue((unity.parent / "CREDITS.md").exists())
         self.assertTrue(Path(result["files"]["midi"]).exists() and Path(result["files"]["musicxml"]).exists())
 
+    def test_section_tail_plays_nothing_later(self):
+        """A section render's tail lets sounding notes ring out; the next section's notes and regions never start in it."""
+        from notewright import cli
+        import io
+        import contextlib
+        folder = Path(tempfile.mkdtemp())
+
+        def render(data, *flags):
+            (folder / "s.json").write_text(json.dumps(data))
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                code = cli.main(["render", str(folder / "s.json"), "--out", str(folder / "out"), "--tail", "1", "--no-score"] + list(flags))
+            result = json.loads(buffer.getvalue())
+            self.assertEqual(code, 0, result)
+            return result, json.loads(Path(result["files"]["report"]).read_text())["perSecond"]
+
+        a = {"name": "a", "bars": 2, "play": {"lead": "tune"}}
+        result, per_second = render(tiny_spec(sections=[a, {"name": "b", "bars": 2, "play": {"lead": "tune", "drums": "beat"}}],
+                                              regions=[{"kind": "White", "section": "b", "bar": 1, "beats": 8, "Gain": .5}]),
+                                    "--section", "a", "--stems")
+        self.assertAlmostEqual(wavinfo.info(result["files"]["wav"])["seconds"], 5, places=1)   # 2 bars at 120 + 1 s tail
+        self.assertEqual([s["name"] for s in result["sections"]], ["a"])
+        stems = {s["name"]: s for s in result["stems"]}
+        self.assertEqual(stems["drums"]["notes"], 0)
+        self.assertLess(stems["drums"]["rmsDb"], -150)                  # section b's drums do not play in the tail
+        self.assertGreater(stems["lead"]["rmsDb"], -60)
+        _, alone = render(tiny_spec(sections=[a]))                      # the same as a song that ends after section a
+        self.assertEqual(per_second, alone)
+        self.assertLess(per_second[-1][0], per_second[-2][0] - 20)      # the tail is only the lead's release
+
 
 class Manifest(unittest.TestCase):
     def test_version_matches_plugin_json(self):
