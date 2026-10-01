@@ -8,9 +8,14 @@ You cannot listen, so mix by numbers and ask the user to confirm by ear.
 |---|---|---|
 | Peak before normalize | `render.peakDb` | below -1 dBFS; `nearFullScale` > 0 means clipping risk |
 | Final peak | `render.outputPeakDb` | -1 dBFS with `--normalize -1` (recommended for delivery) |
-| Loudness | `render.rmsDb` | about -16…-12 dBFS for pop/EDM after normalize, -22…-16 for orchestral/ambient |
+| Loudness | `render.outputRmsDb` | about -16…-12 dBFS for pop/EDM after normalize, -22…-16 for orchestral/ambient |
 | Dynamics | `sections[].rmsDb` | intros/verses 3–8 dB below choruses; a flat curve sounds monotonous |
 | Balance | `stems[].rmsDb` (`--stems`) | see below; a track 20+ dB under the loudest is likely inaudible |
+
+All levels except `outputPeakDb` and `outputRmsDb` (`rmsDb`, `peakDb`, `sections[]`, `stems[]`) are measured before
+`--normalize`, so they compare between renders; add `render.gainDb` for the level in the file. Noise and glitch regions that
+play as sound get their own stem (`kind: "regions"`, `stems/regions.wav`); track stems hold only their track, so their
+levels show the track alone. Regions with `MasterFilter` process the whole mix and so act on every stem.
 | Voices | `render.droppedNotes` | must be 0 (lower `release`, thin dense parts) |
 
 Typical stem RMS relative to the loudest stem (genre-dependent starting points): kick and bass 0 to -3 dB, snare -2 to -5,

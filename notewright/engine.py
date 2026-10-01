@@ -1,9 +1,11 @@
 """Builds and runs the headless renderer: the music engine (engine/Runtime/*.cs) + engine/Renderer.
 
 Runtimes, tried in this order (NOTEWRIGHT_RUNTIME=netfx|dotnet|mono picks one):
-- netfx (Windows): the built-in .NET Framework 4.x, compiled with Roslyn downloaded once from NuGet.
 - dotnet: a .NET SDK 6 or newer, compiled with the SDK's own C# compiler, so nothing is downloaded. Debian/Ubuntu ship it
   as the dotnet-sdk-8.0 package, which also works where only the OS package archive is reachable (claude.ai's sandbox).
+  It renders about twice as fast as the other two, so it comes first wherever it is installed.
+- netfx (Windows): the built-in .NET Framework 4.x, compiled with Roslyn downloaded once from NuGet. The fallback that works
+  on every Windows without installing anything.
 - mono (Linux/macOS): Mono, compiled with Roslyn downloaded once from NuGet.
 Every runtime renders byte-identical audio; engine/run-tests.sh runs the playback fingerprints on Mono and on .NET."""
 import hashlib
@@ -35,6 +37,15 @@ def install_hint() -> str:
         return "install the .NET 8 SDK (brew install --cask dotnet-sdk) or Mono (brew install mono)"
     return ("install the .NET 8 SDK (Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y dotnet-sdk-8.0) "
             "or Mono (sudo apt-get install -y mono-devel)")
+
+
+def sdk_hint() -> str:
+    """How to install the .NET SDK, the fastest runtime."""
+    if os.name == "nt":
+        return "winget install Microsoft.DotNet.SDK.8"
+    if sys.platform == "darwin":
+        return "brew install --cask dotnet-sdk"
+    return "sudo apt-get update && sudo apt-get install -y dotnet-sdk-8.0 (Debian/Ubuntu)"
 
 
 def _version(text):
@@ -94,7 +105,7 @@ def runtime() -> dict:
     choice = os.environ.get("NOTEWRIGHT_RUNTIME", "").strip().lower()
     if choice and choice not in FINDERS:
         raise EngineError(f"NOTEWRIGHT_RUNTIME={choice}: use one of {', '.join(FINDERS)}")
-    order = [choice] if choice else (["netfx", "dotnet", "mono"] if os.name == "nt" else ["dotnet", "mono"])
+    order = [choice] if choice else (["dotnet", "netfx", "mono"] if os.name == "nt" else ["dotnet", "mono"])
     problems = []
     for kind in order:
         try:
@@ -148,7 +159,7 @@ def build(force=False) -> Path:
 
 
 def render(song_json: Path, out_wav: Path, *, rate=48000, bits=16, start_beat=None, length_beats=None, tail=0.0,
-           normalize=None, stems_dir=None) -> dict:
+           normalize=None, stems_dir=None, jobs=1) -> dict:
     exe = build()
     command = runtime()["run"] + [str(exe), "render", "--song", str(song_json), "--out", str(out_wav), "--rate", str(rate), "--bits", str(bits),
                       "--tail", str(tail)]
@@ -159,7 +170,7 @@ def render(song_json: Path, out_wav: Path, *, rate=48000, bits=16, start_beat=No
     if normalize is not None:
         command += ["--normalize", str(normalize)]
     if stems_dir is not None:
-        command += ["--stems", str(stems_dir)]
+        command += ["--stems", str(stems_dir), "--jobs", str(max(1, jobs))]
     result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
     lines = [l for l in result.stdout.splitlines() if l.startswith("{")]
     if not lines:
@@ -181,4 +192,12 @@ def doctor() -> dict:
         info["ok"] = False
         info["error"] = str(error)
         info["fix"] = install_hint()
+        return info
+    if rt["kind"] != "dotnet":
+        try:
+            sdk = _dotnet()
+            info["faster"] = (f"dotnet {sdk['version']} is installed and renders about 2x faster with identical output: "
+                              f"unset NOTEWRIGHT_RUNTIME (now {os.environ.get('NOTEWRIGHT_RUNTIME')}) or set it to dotnet")
+        except EngineError:
+            info["faster"] = f"the .NET 8 SDK renders about 2x faster than {rt['kind']} with identical output; install it: {sdk_hint()}"
     return info

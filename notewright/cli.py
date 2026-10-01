@@ -3,11 +3,13 @@ read results; progress and downloads go to stderr."""
 import argparse
 import json
 import math
+import os
 import re
 import sys
 from pathlib import Path
 
 from . import __version__, catalog, engine, export, midi, musicxml, paths, spec as specs, synthkit
+from .notes import name as note_name
 
 EXAMPLES = paths.PLUGIN_DIR / "examples"
 
@@ -21,7 +23,8 @@ def _brief(entry):
     out = {k: entry.get(k) for k in ("id", "name", "kind", "status", "source", "description") if entry.get(k) is not None}
     out["tags"] = entry.get("tags", [])
     if keys:
-        out["range"] = f"{min(r['lo'] for r in entry['regions'])}-{max(r['hi'] for r in entry['regions'])}"
+        lo, hi = min(r["lo"] for r in entry["regions"]), max(r["hi"] for r in entry["regions"])
+        out["range"] = f"{note_name(lo)}-{note_name(hi)} ({lo}-{hi})"
         out["samples"] = len({r["sample"] for r in entry["regions"]})
         if entry.get("kind") == "drums":
             out["keys"] = keys
@@ -96,6 +99,7 @@ def cmd_instruments(args):
         for i in args.terms:
             entry = catalog.get(i)
             out = _brief(entry)
+            out.setdefault("range", f"known after download (instruments fetch {i})")
             out["license"] = entry.get("license") or (catalog.registry()["libraries"].get(entry.get("library"), {}).get("license"))
             out["regions"] = entry.get("regions", "download first (instruments fetch)")
             _print(out)
@@ -156,9 +160,12 @@ def _advice(report, meta, sections):
     if report.get("gainDb", 0) == 0 and peak > -0.3:
         tips.append(f"mix peaks at {peak:.1f} dBFS ({report['nearFullScale']} samples ≥ -0.2 dBFS): lower track gains / master OutputDb, "
                     "enable master Compressor, or render with --normalize -1")
-    if report.get("rmsDb", -200) < -26:
-        tips.append(f"overall level is low (RMS {report['rmsDb']:.1f} dBFS): raise gains or use --normalize -1")
-    parts = report.get("parts") or []
+    rms = report.get("outputRmsDb", report.get("rmsDb", -200))   # the file's level, after --normalize
+    if rms < -26:
+        fix = "it is already normalized, so give it more body: louder sustained parts, master Compressor" if report.get("gainDb") \
+            else "raise gains or use --normalize -1"
+        tips.append(f"overall level is low (output RMS {rms:.1f} dBFS): {fix}")
+    parts = [p for p in report.get("parts") or [] if p.get("kind", "track") == "track"]
     audible = [p for p in parts if p["rmsDb"] > -150]
     if len(audible) > 1:
         loudest = max(p["rmsDb"] for p in audible)
@@ -195,9 +202,14 @@ def cmd_render(args):
     if not args.score_only:
         wav = out_dir / f"{slug}{'-' + _slug(args.section) if args.section else ''}{'-bars-' + args.bars if args.bars else ''}.wav"
         normalize = args.normalize if args.normalize is not None else output.get("normalize")
+        jobs = args.jobs or min(4, os.cpu_count() or 1)
+        if args.stems:
+            sounding = any(r.get("Enabled", True) and not r.get("MasterFilter") for r in song["regions"])   # → regions.wav
+            stems = len({p.get("stem", p["name"]) for p in song["parts"]}) + sounding
+            print(f"rendering the mix, then {stems} stems ({jobs} at a time); each stem takes about as long as the mix", file=sys.stderr)
         report = engine.render(song_path, wav, rate=args.rate or output.get("rate", 48000), bits=args.bits or output.get("bits", 24),
                                start_beat=start, length_beats=length, tail=args.tail if args.tail is not None else output.get("tail", 2.0),
-                               normalize=normalize, stems_dir=out_dir / "stems" if args.stems else None)
+                               normalize=normalize, stems_dir=out_dir / "stems" if args.stems else None, jobs=jobs)
         per_second = report.pop("perSecond", [])
         sections = []
         range_start = start or 0
@@ -216,10 +228,10 @@ def cmd_render(args):
         (out_dir / "report.json").write_text(json.dumps(dict(report, perSecond=per_second, sections=sections), indent=1), encoding="utf-8")
         result["files"]["wav"] = report["out"]
         result["render"] = {k: report[k] for k in ("seconds", "rate", "bits", "playbackVersion", "peakVoices", "voiceLimit", "droppedNotes",
-                                                    "peakDb", "rmsDb", "outputPeakDb", "gainDb", "nearFullScale")}
+                                                    "peakDb", "rmsDb", "gainDb", "outputPeakDb", "outputRmsDb", "nearFullScale")}
         result["sections"] = sections
         if report.get("parts"):
-            result["stems"] = [{k: p[k] for k in ("name", "file", "notes", "rmsDb", "peakDb")} for p in report["parts"]]
+            result["stems"] = [{k: p[k] for k in ("name", "kind", "file", "notes", "rmsDb", "peakDb")} for p in report["parts"]]
         result["advice"] = _advice(report, meta, sections)
         result["files"]["report"] = str(out_dir / "report.json")
     if not args.no_score:
@@ -277,6 +289,7 @@ def main(argv=None):
     p.add_argument("--tail", type=float, help="seconds of release tail after the end; nothing new starts in it (default 2)")
     p.add_argument("--normalize", type=float, help="scale the mix so its peak hits this dBFS, e.g. -1")
     p.add_argument("--stems", action="store_true", help="also render each track alone into stems/<track>.wav")
+    p.add_argument("--jobs", type=int, help="stems rendered at the same time (default: CPU cores, at most 4)")
     p.add_argument("--section", help="render only this section")
     p.add_argument("--bars", help="render only bars A-B (1-based, inclusive)")
     p.add_argument("--no-score", action="store_true", help="skip the MIDI and MusicXML files")
@@ -286,6 +299,9 @@ def main(argv=None):
     p = sub.add_parser("convert", help="convert a score with MuseScore (e.g. song.musicxml song.pdf)")
     p.add_argument("source")
     p.add_argument("target")
+    for stream in (sys.stdout, sys.stderr):   # JSON is UTF-8 even where the console code page is not (cp949, cp1252)
+        if hasattr(stream, "reconfigure") and (stream.encoding or "").lower().replace("-", "") != "utf8":
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     args = parser.parse_args(argv)
     handlers = {"doctor": cmd_doctor, "instruments": cmd_instruments, "new": cmd_new, "check": cmd_check, "render": cmd_render,
                 "convert": cmd_convert}
