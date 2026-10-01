@@ -13,6 +13,7 @@ namespace GrazePlugin
     /// Prints a JSON report on stdout. Usage:
     ///   renderer render --song song.json --out mix.wav [--samples DIR] [--rate 48000] [--bits 16|24|32]
     ///                   [--start BEAT] [--length BEATS] [--tail SECONDS] [--normalize DBFS] [--stems DIR] [--report FILE]
+    /// A range (--start/--length) plays from the song's start silently up to --start and stops at its end (see EndAt).
     /// </summary>
     public static class Program
     {
@@ -57,10 +58,11 @@ namespace GrazePlugin
             string samples = o.TryGetValue("samples", out var s) ? s : Path.Combine(Path.GetDirectoryName(songPath), "Samples");
             int rate = (int)D(o, "rate", 48000), bits = (int)D(o, "bits", 16);
             var song = SongLoader.Load(File.ReadAllText(songPath), samples, out var groups);
-            var cue = song.Compile();
             double start = D(o, "start", 0), length = D(o, "length", song.LoopBeats - start), tail = D(o, "tail", 0);
             if (start < 0 || start >= song.LoopBeats || length <= 0) throw new ArgumentException("--start/--length outside the song");
             double end = Math.Min(song.LoopBeats, start + length);
+            if (end < song.LoopBeats) EndAt(song, end);
+            var cue = song.Compile();
             double startSeconds = cue.Tempo.SecondsAt(start), seconds = cue.Tempo.SecondsAt(end) - startSeconds + tail;
             long frames = Math.Max(1, (long)Math.Round(seconds * rate));
 
@@ -91,7 +93,7 @@ namespace GrazePlugin
                         for (int i = 0; i < song.Parts.Length; i++)
                         {
                             song.Parts[i].Solo = groups[i] == group;
-                            if (song.Parts[i].Solo) notes += song.Parts[i].Notes.Length;
+                            if (song.Parts[i].Solo) notes += song.Parts[i].Notes.Count(n => n.Beat < end && n.Beat + n.Duration > start);
                         }
                         var stem = RenderToFloat(song.Compile(), rate, startSeconds, frames, temp);
                         string file = Path.Combine(stems, Safe(group) + ".wav");
@@ -105,6 +107,27 @@ namespace GrazePlugin
                 return report;
             }
             finally { File.Delete(temp); }
+        }
+
+        /// <summary>
+        /// A range render (--length before the song's end) stops the music at <paramref name="end"/>: notes and noise regions that
+        /// start there or later are dropped and the ones still sounding end there, so the tail holds only releases and effect
+        /// decay, never the next section. Notes keep their sound up to the end (only the release moves); a noise region that is cut
+        /// fades out with its own fade-out, ending at the range end. Changes this song definition only (not the runtime).
+        /// </summary>
+        static void EndAt(MusicCueDefinition song, double end)
+        {
+            foreach (var part in song.Parts)
+                part.Notes = part.Notes.Where(n => n.Beat + 1e-9 < end)
+                    .Select(n => n.Beat + n.Duration > end ? new MusicNote(n.Beat, end - n.Beat, n.Key, n.Velocity) : n).ToArray();
+            song.NoiseRegions = song.NoiseRegions.Where(r => r == null || r.StartBeat + 1e-9 < end).ToArray();
+            foreach (var r in song.NoiseRegions)
+            {
+                if (r == null || r.StartBeat + r.DurationBeats <= end) continue;
+                r.DurationBeats = end - r.StartBeat;
+                r.FadeInBeats = Math.Min(r.FadeInBeats, r.DurationBeats);
+                r.FadeOutBeats = Math.Min(r.FadeOutBeats, r.DurationBeats - r.FadeInBeats);
+            }
         }
 
         static string Safe(string name) => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) || c == ' ' ? '_' : c));

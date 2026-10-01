@@ -50,7 +50,9 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
 6. **Render:** `render <spec> [--stems] [--pdf] [--unity] [--section NAME | --bars 9-16]`. Default output:
    `<spec folder>/out/<title>/` with `<title>.wav`, `.mid`, `.musicxml`, `report.json` and `<title>.song.json`
    (the engine data). A render runs about 5–10× faster than real time and `--stems` adds one pass per track, so render a
-   section or bar range while iterating.
+   section or bar range while iterating. A range render plays what comes before it (so reverb and held notes carry in) and
+   stops at its end: the tail (`--tail`, default 2 s) only lets sounding notes, echoes and reverb ring out, and nothing of the
+   next section plays in it; `sections[]` and `stems[].notes` cover only the range.
 7. **Mix from the report** (see [reference/mixing.md](reference/mixing.md)): `render.peakDb` / `outputPeakDb`,
    `render.rmsDb`, `sections[].rmsDb` (energy curve), `stems[].rmsDb` (track balance, with `--stems`), `render.droppedNotes`,
    and `advice`. Adjust gains, pans, effects, master and arrangement, then re-render. Two or three passes are usually enough.

@@ -3,7 +3,9 @@
 `song.json` is what `notewright/spec.py` compiles a song spec into and what the renderer (`engine/Renderer/Program.cs`,
 `SongLoader`) plays: `renderer render --song song.json --out mix.wav [--samples DIR] [--rate] [--bits] [--start BEAT]
 [--length BEATS] [--tail SECONDS] [--normalize DBFS] [--stems DIR] [--report FILE]`. Sample paths are absolute or relative to
-`--samples` (default `<song folder>/Samples`). Missing numbers are 0, as with Unity's JsonUtility; unknown fields in `master`, `effects`, `regions` and `tempo` are errors.
+`--samples` (default `<song folder>/Samples`). With `--length` ending before `loopBeats`, the renderer drops notes and regions that
+start at or after the range end and shortens the ones still sounding to end there (a cut region keeps its fade-in and fades
+out at the range end), so the `--tail` holds only releases and effect decay; the song.json itself is not changed. Missing numbers are 0, as with Unity's JsonUtility; unknown fields in `master`, `effects`, `regions` and `tempo` are errors.
 
 `render --unity` writes the same format with relative sample names for the com.graze.music Unity package's
 `SongJsonBuilder` (separate project). It matches the format as of the 2026-10-01 split; fields added here later may not exist

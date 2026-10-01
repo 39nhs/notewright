@@ -200,10 +200,14 @@ def cmd_render(args):
                                normalize=normalize, stems_dir=out_dir / "stems" if args.stems else None)
         per_second = report.pop("perSecond", [])
         sections = []
-        offset = _seconds_at(start or 0, meta["bpm"], meta["tempo"])
+        range_start = start or 0
+        range_end = min(meta["loop"], range_start + length) if length else meta["loop"]
+        offset = _seconds_at(range_start, meta["bpm"], meta["tempo"])
         for s in meta["sections"]:
-            a = _seconds_at(s["beat"], meta["bpm"], meta["tempo"]) - offset
-            b = _seconds_at(s["beat"] + s["beats"], meta["bpm"], meta["tempo"]) - offset
+            if s["beat"] >= range_end or s["beat"] + s["beats"] <= range_start:
+                continue  # outside the rendered range (the tail only rings out; it plays no later section)
+            a = _seconds_at(max(s["beat"], range_start), meta["bpm"], meta["tempo"]) - offset
+            b = _seconds_at(min(s["beat"] + s["beats"], range_end), meta["bpm"], meta["tempo"]) - offset
             window = per_second[max(0, int(a)):max(0, int(math.ceil(b)))]
             if window:
                 power = sum(10 ** (r / 10) for r, _ in window) / len(window)
@@ -270,7 +274,7 @@ def main(argv=None):
     p.add_argument("--name", help="file name stem (default: the title)")
     p.add_argument("--rate", type=int)
     p.add_argument("--bits", type=int, choices=[16, 24, 32])
-    p.add_argument("--tail", type=float, help="seconds of release tail after the end (default 2)")
+    p.add_argument("--tail", type=float, help="seconds of release tail after the end; nothing new starts in it (default 2)")
     p.add_argument("--normalize", type=float, help="scale the mix so its peak hits this dBFS, e.g. -1")
     p.add_argument("--stems", action="store_true", help="also render each track alone into stems/<track>.wav")
     p.add_argument("--section", help="render only this section")

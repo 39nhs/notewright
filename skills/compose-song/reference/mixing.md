@@ -37,5 +37,7 @@ For orchestral music: melody instrument loudest, strings pad -4 to -8, harp/arpe
 ## Iterating
 
 1. Render with `--stems` once to get balance; fix gross level problems (a track 20 dB off, clipping).
-2. Then render only the section you are changing (`--section chorus` or `--bars 17-24`) to save time.
+2. Then render only the section you are changing (`--section chorus` or `--bars 17-24`) to save time. The range ends where
+   the section does: notes still held there are released and noise regions fade out at the end, and the tail holds only
+   that decay, so a quiet stem or a section in `sections[]` really is in the range.
 3. Finish with a full render with `--normalize -1` and report the final numbers to the user.

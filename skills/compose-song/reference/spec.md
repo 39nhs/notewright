@@ -20,6 +20,7 @@ Working examples: `${CLAUDE_PLUGIN_ROOT}/examples/pop.json` and `orchestral.json
   "master":      { <mixer fields> },
   "regions":     [ <noise/glitch region>, ... ],
   "output":      { "rate": 48000, "bits": 24, "tail": 2, "normalize": -1 }   // render defaults; CLI flags override
+                                                // tail: seconds after the end where only releases/echoes/reverb ring out
 }
 ```
 
