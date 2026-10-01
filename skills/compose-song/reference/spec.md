@@ -72,10 +72,11 @@ A pattern is a reusable block of notes, written in any of three notations (they 
 ```json
 "chords": {"bars": 4, "notes": "0 4 A3,C4,E4 @0.8 | 4 4 F3,A3,C4 | 8 4 C4,E4,G4 | 12 4 G3,B3,D4"}
 ```
-**melody** — sequential `pitch:duration` tokens; `r:1` is a rest; `C4+E4+G4:2` a chord; `@0.7` sets velocity;
-a pitch without `:duration` reuses the previous duration; `|` bar lines are ignored:
+**melody** — sequential `pitch:duration` tokens; `r:1` is a rest; `C4+E4+G4:2` a chord; a pitch without `:duration` reuses
+the previous duration; `|` bar lines are ignored. Velocity: a token `@0.7` on its own sets it for the notes after it (until the
+next `@`); a suffix `E5:1@0.9` sets it for that note only:
 ```json
-"hook": {"melody": "r:0.5 E5:0.5 A5:1 G5:0.5 E5:1.5 | C5:1 D5 E5 r:1"}
+"hook": {"melody": "@0.75 r:0.5 E5:0.5 A5:1@0.95 G5:0.5 E5:1.5 | @0.6 C5:1 D5 E5 r:1"}
 ```
 **drums** — a step grid per sound; `step` = beats per character (default 0.25 = 16ths; use 1/3 or 1/6 for triplets).
 `X` accent (1.0), `x` hit (0.85), `o` soft (0.45), `g` ghost (0.3), `.` `-` `_` rest; spaces and `|` are ignored:

@@ -25,11 +25,12 @@ Claude가 **com.graze.music 엔진(재생 V2)** 으로 곡을 작곡·편곡·�
 
 | OS | 렌더러 런타임 (하나만 있으면 됨) |
 |---|---|
-| Windows | 기본 .NET Framework 4.x (설치 불필요) |
+| Windows | **.NET 8 SDK** (`winget install Microsoft.DotNet.SDK.8`), 없으면 기본 .NET Framework 4.x (설치 불필요) |
 | Linux | **.NET 8 SDK** (`sudo apt-get install dotnet-sdk-8.0`) 또는 Mono (`sudo apt-get install mono-devel`) |
 | macOS | **.NET 8 SDK** (`brew install --cask dotnet-sdk`) 또는 Mono (`brew install mono`) |
 
-어느 런타임이든 같은 소리를 냅니다(엔진 테스트를 Mono와 .NET 양쪽에서 실행). 런타임이 없어도 MIDI와 악보는 만들 수 있습니다(`render --score-only`).
+어느 런타임이든 바이트 단위로 같은 소리를 냅니다(엔진 테스트를 Mono와 .NET 양쪽에서 실행). .NET SDK가 있으면 먼저 쓰고,
+.NET Framework나 Mono보다 약 2배 빠릅니다. `doctor`가 더 빠른 런타임을 쓸 수 있으면 `faster`로 알려 줍니다. 런타임이 없어도 MIDI와 악보는 만들 수 있습니다(`render --score-only`).
 PDF 악보는 선택 사항: [MuseScore](https://musescore.org).
 
 Claude Code에서:

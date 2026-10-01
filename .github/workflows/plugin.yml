@@ -1,5 +1,6 @@
 # Plugin checks: engine tests on Mono and .NET (Linux), Python unit tests with a render through the engine and a git-only
-# instrument download, doctor, an example render, and (Linux) the same render on Mono and .NET compared byte for byte.
+# instrument download, doctor, an example render, and the same render with stems compared byte for byte between .NET and
+# Mono (Linux) or .NET Framework (Windows, which also runs the unit tests on .NET Framework).
 name: plugin
 on:
   push:
@@ -27,7 +28,6 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends mono-devel
       - uses: actions/setup-dotnet@v4
-        if: runner.os == 'Linux'
         with:
           dotnet-version: "8.0.x"
       - name: Cache compiler
@@ -49,9 +49,20 @@ jobs:
         run: python notewright.py doctor
       - name: Render the built-in example
         run: python notewright.py render examples/pop.json --out out --stems --unity
-      - name: Mono and .NET render the same WAV
+      - name: Mono and .NET render the same WAV and stems
         if: runner.os == 'Linux'
         run: |
-          NOTEWRIGHT_RUNTIME=dotnet python notewright.py render examples/pop.json --out out-dotnet --no-score
-          NOTEWRIGHT_RUNTIME=mono python notewright.py render examples/pop.json --out out-mono --no-score
-          cmp out-dotnet/*.wav out-mono/*.wav
+          NOTEWRIGHT_RUNTIME=dotnet python notewright.py render examples/pop.json --out out-dotnet --no-score --stems
+          NOTEWRIGHT_RUNTIME=mono python notewright.py render examples/pop.json --out out-mono --no-score --stems --jobs 1
+          for f in out-dotnet/*.wav out-dotnet/stems/*.wav; do cmp "$f" "out-mono/${f#out-dotnet/}"; done
+      - name: Unit tests on .NET Framework
+        if: runner.os == 'Windows'
+        shell: bash
+        run: NOTEWRIGHT_RUNTIME=netfx python -m unittest discover -s tests
+      - name: .NET Framework and .NET render the same WAV and stems
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          NOTEWRIGHT_RUNTIME=dotnet python notewright.py render examples/pop.json --out out-dotnet --no-score --stems
+          NOTEWRIGHT_RUNTIME=netfx python notewright.py render examples/pop.json --out out-netfx --no-score --stems --jobs 1
+          for f in out-dotnet/*.wav out-dotnet/stems/*.wav; do cmp "$f" "out-netfx/${f#out-dotnet/}"; done

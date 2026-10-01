@@ -22,8 +22,13 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
 
 1. **First use:** `doctor`. It reports the runtime that renders audio (`runtime`), how instruments download
    (`instrumentDownloads`) and, if rendering is not possible, `error` and `fix`. The renderer runs on the .NET 6+ SDK
-   (`dotnet`), Mono, or Windows' built-in .NET Framework; with Mono or .NET Framework the first run downloads the C# compiler
-   (~10 MB, once).
+   (`dotnet`, used first when installed), Windows' built-in .NET Framework (`netfx`) or Mono; with Mono or .NET Framework the
+   first run downloads the C# compiler (~10 MB, once). All of them render byte-identical audio, but `dotnet` is about twice as
+   fast, which adds up over stems and several mix passes.
+   - **`faster` in the report** (`ok` is true but the runtime is `netfx` or `mono`): improve the runtime before the first
+     render. If it says dotnet is already installed, use it (unset `NOTEWRIGHT_RUNTIME` or set it to `dotnet`). Otherwise, on
+     the user's own computer, show the install command it names and ask before installing; in a disposable sandbox, install
+     the .NET 8 SDK yourself (below) and run `doctor` again.
    - **On the user's own computer:** if `ok` is false, tell the user the `fix` command; don't install system packages yourself
      unless they say so.
    - **In a disposable sandbox** (claude.ai chat, Cowork, a cloud session): if `ok` is false and you can install packages,
@@ -36,6 +41,9 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
      access to github.com (on claude.ai: code execution network access "package managers" or wider).
 2. **Understand the brief:** genre, mood, tempo, length, key, instruments, output formats (WAV / stems / MIDI / sheet music
    PDF / Unity). Ask only about what you cannot reasonably choose yourself; otherwise decide and say what you chose.
+   **A reference song** ("like X", "in the style of X"): unless the user says how to use it, borrow part of its chord
+   progression so a listener recognizes it on first hearing, and write your own melody over it; see
+   [reference/composition.md](reference/composition.md#reference-songs).
 3. **Pick instruments** (see [reference/instruments.md](reference/instruments.md)):
    - `instruments find <words> [--kind drums]` searches built-in synths, the downloadable VSCO 2 CE orchestra and anything
      scanned on this computer. Use the ids it returns, or write `"find:<words>"` in the spec to pick the best match automatically.
@@ -49,12 +57,13 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
    and warnings. Fix errors and re-check.
 6. **Render:** `render <spec> [--stems] [--pdf] [--unity] [--section NAME | --bars 9-16]`. Default output:
    `<spec folder>/out/<title>/` with `<title>.wav`, `.mid`, `.musicxml`, `report.json` and `<title>.song.json`
-   (the engine data). A render runs about 5–10× faster than real time and `--stems` adds one pass per track, so render a
-   section or bar range while iterating. A range render plays what comes before it (so reverb and held notes carry in) and
+   (the engine data). A render runs about 8× faster than real time on `dotnet` (about 4× on .NET Framework or Mono).
+   `--stems` adds one pass per track (plus one for noise regions), each about as long as the mix, rendered up to 4 at a time
+   (`--jobs`), so use it once for balance and render a section or bar range while iterating. A range render plays what comes before it (so reverb and held notes carry in) and
    stops at its end: the tail (`--tail`, default 2 s) only lets sounding notes, echoes and reverb ring out, and nothing of the
    next section plays in it; `sections[]` and `stems[].notes` cover only the range.
 7. **Mix from the report** (see [reference/mixing.md](reference/mixing.md)): `render.peakDb` / `outputPeakDb`,
-   `render.rmsDb`, `sections[].rmsDb` (energy curve), `stems[].rmsDb` (track balance, with `--stems`), `render.droppedNotes`,
+   `render.outputRmsDb` (the file's level; `rmsDb` and every other level are before `--normalize`), `sections[].rmsDb` (energy curve), `stems[].rmsDb` (track balance, with `--stems`), `render.droppedNotes`,
    and `advice`. Adjust gains, pans, effects, master and arrangement, then re-render. Two or three passes are usually enough.
 8. **Deliver:** give the user the file paths (WAV, stems, MIDI, MusicXML/PDF, Unity folder), a short description of the
    structure (sections with bar numbers), the instruments and their licenses (VSCO 2 CE is CC0; built-in synths are generated),
@@ -65,7 +74,7 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
 | Want | Flag | Result |
 |---|---|---|
 | WAV mix | (default) | `<title>.wav`, 48 kHz 24-bit stereo (`--rate`, `--bits 16/24/32`, `--normalize -1`, `--tail 3`) |
-| Stems | `--stems` | `stems/<track>.wav`, one per track, same gain as the mix |
+| Stems | `--stems` | `stems/<track>.wav`, one per track, plus `stems/regions.wav` for noise regions; same gain as the mix, they add up to it |
 | MIDI | (default) | `<title>.mid` (type 1, tempo map, section markers, GM programs, drums on channel 10) |
 | Sheet music | (default) / `--pdf` | `<title>.musicxml` (opens in MuseScore, Dorico, Finale, Sibelius); `--pdf` needs MuseScore installed. `convert a.musicxml a.pdf` converts later |
 | Unity | `--unity` | `unity/<title>.song.json` + `Samples/` + `CREDITS.md` for com.graze.music's `SongJsonBuilder` |

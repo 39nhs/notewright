@@ -17,12 +17,33 @@ Write music, not just notes: decide form, harmony, melody and groove first, then
 5. **Energy curve**: add/remove layers per section; raise register, density and velocity toward choruses; drop elements before
    a big entry (a bar of silence or only pads before the chorus works).
 
+## Reference songs
+
+When the user names a song to work from ("like X", "X 느낌으로") and does not say how to use it, the default is fixed: **borrow
+part of its chord progression**, not a loose homage. A new piece that only shares the mood, tempo or instruments is rarely
+recognized; the reference's own harmony is what makes a listener name it on first hearing.
+
+1. **Pick the signature progression**: the 2–8 chords listeners know it by, usually the chorus, hook or opening riff
+   (with the bass motion, e.g. a descending bass under the chords). Take one or two such passages, not the whole song.
+2. **Keep it recognizable**: the same chord qualities and order, harmonic rhythm (chords per bar) and meter; the original key or
+   one close to it; the characteristic voicing or accompaniment figure (arpeggio, rhythm, register) and the tempo and feel.
+3. **Put it where it is heard**: the chorus or main theme, and once early (intro or first verse) so it registers; build the
+   other sections around it with your own harmony that leads into it.
+4. **Melody and lyrics stay original**: write a new melody over the borrowed chords; do not copy the reference's melody, lyrics,
+   recorded sounds or distinctive riff note for note.
+5. **Say what you borrowed** when delivering: which progression (Roman numerals and chord names), from which part of the
+   reference, and in which bars of the new song.
+
+If you are not sure of the reference's actual chords, say so and ask the user for them (or for a chord chart) instead of
+guessing; a wrong progression is no longer recognizable. When the user asks for something else (an homage in mood only, a
+cover, an original with no borrowing), do that instead.
+
 ## Voicing and ranges (MIDI keys)
 
 - Bass: E1–G2 (28–43); sub-bass roots only. Avoid thirds below C3 (muddy).
 - Chords/pads: C3–G5 (48–79); close voicing around C4; move with smallest steps (common tones held).
 - Melody: C4–C6 (60–84); above the chords or in a different register.
-- Typical orchestral ranges (check the sampled range with `instruments info <id>` → `range`): violin G3–C7, viola C3–E6, cello C2–C5, contrabass E1–G3, flute C4–C7,
+- Typical orchestral ranges (check the sampled range with `instruments info <id>` → `range`, e.g. `"C1-G7 (24-103)"`, after the instrument is downloaded): violin G3–C7, viola C3–E6, cello C2–C5, contrabass E1–G3, flute C4–C7,
   oboe Bb3–A5, clarinet D3–Bb6, bassoon Bb1–Eb5, horn B1–F5, trumpet F#3–C6, trombone E2–F5, tuba D1–F4, harp C1–G7,
   timpani D2–A3. Notes outside the sampled range are pitched far and sound unnatural.
 

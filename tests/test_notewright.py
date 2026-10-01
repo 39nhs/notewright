@@ -129,6 +129,13 @@ class Spec(unittest.TestCase):
         self.assertEqual(notes[3][3], .5)
         self.assertEqual([s["beat"] for s in song["sections"]], [0, 4])
 
+    def test_melody_velocity(self):
+        notes, _ = spec._melody("C4:1 @0.5 D4 E4@0.9 F4 @100 G4", "m")
+        self.assertEqual([round(n[3], 3) for n in notes], [1, .5, .9, .5, round(100 / 127, 3)])   # '@v' lasts, 'note@v' is one note
+        self.assertEqual([n[0] for n in notes], [0, 1, 2, 3, 4])
+        with self.assertRaisesRegex(spec.SpecError, "velocity 'x' is not a number"):
+            spec._melody("C4:1 @x D4", "m")
+
     def test_tempo_regions_master(self):
         song, _ = spec.compile(tiny_spec(tempo=[{"bar": 2, "bpm": 90, "rampBeats": 2}],
                                          regions=[{"kind": "PitchGlitch", "section": "a", "bar": 2, "beats": 2}],
@@ -148,6 +155,38 @@ class Spec(unittest.TestCase):
             spec.compile(tiny_spec(sections=[{"name": "a", "bars": 1, "play": {"lead": "H9:1"}}]))
         with self.assertRaisesRegex(spec.SpecError, "unknown mixer fields"):
             spec.compile(tiny_spec(master={"Reverb": 1}))
+
+
+class Cli(unittest.TestCase):
+    def test_utf8_output_on_any_code_page(self):
+        """Piped output on a Korean Windows console is cp949; the JSON must still be written (as UTF-8)."""
+        import io
+        from notewright import cli
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp949")
+        old, sys.stdout = sys.stdout, stream
+        try:
+            code = cli.main(["instruments", "find", "harp"])
+            stream.flush()
+        finally:
+            sys.stdout = old
+        self.assertEqual(code, 0)
+        self.assertIn("\u2014", raw.getvalue().decode("utf-8"))           # the em dash in "VSCO 2 Community Edition — Harp"
+
+    def test_range_names_notes(self):
+        from notewright import cli
+        brief = cli._brief({"id": "x", "regions": [{"lo": 24, "hi": 60, "key": 48, "sample": "a"},
+                                                   {"lo": 61, "hi": 103, "key": 72, "sample": "b"}]})
+        self.assertEqual(brief["range"], "C1-G7 (24-103)")
+
+    def test_advice_reads_the_normalized_level(self):
+        from notewright import cli
+        report = {"peakDb": -9, "rmsDb": -30, "gainDb": 8, "outputRmsDb": -22, "parts": [
+            {"name": "lead", "kind": "track", "rmsDb": -20}, {"name": "regions", "kind": "regions", "rmsDb": -60}]}
+        self.assertEqual(cli._advice(report, {}, []), [])                  # quiet before --normalize is fine; noise stem may be quiet
+        quiet = cli._advice(dict(report, outputRmsDb=-29), {}, [])
+        self.assertEqual(len(quiet), 1)
+        self.assertIn("already normalized", quiet[0])
 
     def test_zone_split_and_budget(self):
         folder = Path(tempfile.mkdtemp())
@@ -298,6 +337,38 @@ class Render(unittest.TestCase):
         _, alone = render(tiny_spec(sections=[a]))                      # the same as a song that ends after section a
         self.assertEqual(per_second, alone)
         self.assertLess(per_second[-1][0], per_second[-2][0] - 20)      # the tail is only the lead's release
+
+    def test_stems_keep_regions_apart(self):
+        """Noise regions get their own stem instead of sounding in every track's stem; parallel stems match serial ones."""
+        from notewright import cli
+        import io
+        import contextlib
+        folder = Path(tempfile.mkdtemp())
+        (folder / "s.json").write_text(json.dumps(tiny_spec(
+            sections=[{"name": "a", "bars": 1, "play": {"drums": "beat"}}, {"name": "b", "bars": 1, "play": {"lead": "tune"}}],
+            regions=[{"kind": "Pink", "section": "a", "beats": 4, "Gain": .5}])))
+
+        def render(out, jobs):
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                code = cli.main(["render", str(folder / "s.json"), "--out", str(folder / out), "--tail", "0", "--no-score",
+                                 "--stems", "--jobs", str(jobs)])
+            result = json.loads(buffer.getvalue())
+            self.assertEqual(code, 0, result)
+            return {s["name"]: s for s in result["stems"]}
+
+        stems = render("one", 1)
+        self.assertEqual(sorted(stems), ["drums", "lead", "regions"])
+        self.assertEqual((stems["regions"]["kind"], stems["regions"]["notes"]), ("regions", 1))
+        self.assertGreater(stems["regions"]["rmsDb"], -60)
+        import wave
+        with wave.open(stems["lead"]["file"]) as w:                    # 2 bars at 120 BPM = 4 s
+            self.assertEqual(w.getnframes(), 4 * w.getframerate())
+            first_bar = w.readframes(2 * w.getframerate())
+        self.assertEqual(first_bar.count(0), len(first_bar))           # the lead rests in section a, where the noise plays
+        parallel = render("four", 4)
+        for name in stems:
+            self.assertEqual(Path(stems[name]["file"]).read_bytes(), Path(parallel[name]["file"]).read_bytes(), name)
 
 
 class Manifest(unittest.TestCase):

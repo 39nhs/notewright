@@ -12,7 +12,7 @@ namespace GrazePlugin
     /// Headless renderer: song.json (the format Unity's SongJsonBuilder reads) → WAV with the same AdaptiveMusicEngine.
     /// Prints a JSON report on stdout. Usage:
     ///   renderer render --song song.json --out mix.wav [--samples DIR] [--rate 48000] [--bits 16|24|32]
-    ///                   [--start BEAT] [--length BEATS] [--tail SECONDS] [--normalize DBFS] [--stems DIR] [--report FILE]
+    ///                   [--start BEAT] [--length BEATS] [--tail SECONDS] [--normalize DBFS] [--stems DIR] [--jobs N] [--report FILE]
     /// A range (--start/--length) plays from the song's start silently up to --start and stops at its end (see EndAt).
     /// </summary>
     public static class Program
@@ -32,6 +32,7 @@ namespace GrazePlugin
             catch (Exception e)
             {
                 var error = e is System.Reflection.TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
+                if (error is AggregateException a && a.InnerExceptions.Count > 0) error = a.InnerExceptions[0];
                 Console.WriteLine(Json.Write(new Dictionary<string, object> { ["ok"] = false, ["error"] = error.Message, ["type"] = error.GetType().Name }));
                 return 2;
             }
@@ -80,33 +81,73 @@ namespace GrazePlugin
                     ["playbackVersion"] = cue.PlaybackVersion, ["voiceLimit"] = MusicPlaybackVersion.VoiceLimit(cue.PlaybackVersion),
                     ["peakVoices"] = mix.PeakVoices, ["droppedNotes"] = mix.Dropped,
                     ["peakDb"] = Db(mix.Peak), ["rmsDb"] = Db(mix.Rms), ["nearFullScale"] = mix.NearFullScale,
-                    ["gainDb"] = Db(gain), ["outputPeakDb"] = Db(mix.Peak * gain),
+                    ["gainDb"] = Db(gain), ["outputPeakDb"] = Db(mix.Peak * gain), ["outputRmsDb"] = Db(mix.Rms * gain),
                     ["perSecond"] = mix.PerSecond.Select(x => (object)new List<object> { Math.Round(Db(x.Rms), 1), Math.Round(Db(x.Peak), 1) }).ToList(),
                 };
                 if (o.TryGetValue("stems", out var stems))
-                {
-                    // One stem per "stem" group (a part's optional "stem" key, else its name): the group's parts are soloed together.
-                    var parts = new List<object>();
-                    foreach (var group in groups.Distinct())
-                    {
-                        int notes = 0;
-                        for (int i = 0; i < song.Parts.Length; i++)
-                        {
-                            song.Parts[i].Solo = groups[i] == group;
-                            if (song.Parts[i].Solo) notes += song.Parts[i].Notes.Count(n => n.Beat < end && n.Beat + n.Duration > start);
-                        }
-                        var stem = RenderToFloat(song.Compile(), rate, startSeconds, frames, temp);
-                        string file = Path.Combine(stems, Safe(group) + ".wav");
-                        CopyToWav(temp, file, rate, bits, gain);
-                        parts.Add(new Dictionary<string, object> { ["name"] = group, ["file"] = Path.GetFullPath(file),
-                            ["notes"] = notes, ["rmsDb"] = Db(stem.Rms), ["peakDb"] = Db(stem.Peak), ["peakVoices"] = stem.PeakVoices });
-                    }
-                    foreach (var p in song.Parts) p.Solo = false;
-                    report["parts"] = parts;
-                }
+                    report["parts"] = RenderStems(song, groups, stems, rate, bits, gain, start, end, startSeconds, frames, (int)D(o, "jobs", 1));
                 return report;
             }
             finally { File.Delete(temp); }
+        }
+
+        /// <summary>
+        /// One stem per "stem" group (a part's optional "stem" key, else its name): the group's parts are soloed together. Noise
+        /// regions that play as sound (not MasterFilter effects, which process every stem as they process the mix) go to their own
+        /// "regions" stem instead of into every track's stem, so the stems add up to the mix. Stems render on up to
+        /// <paramref name="jobs"/> threads; each has its own engine, so the audio is the same as rendering them one by one.
+        /// </summary>
+        static List<object> RenderStems(MusicCueDefinition song, string[] groups, string folder, int rate, int bits, double gain,
+            double start, double end, double startSeconds, long frames, int jobs)
+        {
+            var names = groups.Distinct().ToList();
+            var sounding = song.NoiseRegions.Where(r => r != null && r.Enabled && !r.MasterFilter).ToList();
+            string regionStem = null;
+            if (sounding.Count > 0)
+            {
+                regionStem = "regions";
+                while (names.Contains(regionStem)) regionStem = "_" + regionStem;
+                names.Add(regionStem);
+            }
+            var mute = song.Parts.Select(p => p.Mute).ToArray();
+            var results = new Dictionary<string, object>[names.Count];
+            var gate = new object();
+            System.Threading.Tasks.Parallel.For(0, names.Count, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, jobs) }, k =>
+            {
+                string group = names[k];
+                bool regions = group == regionStem;
+                int notes = 0;
+                MusicCue cue;
+                lock (gate)    // the definition's flags are shared: set them, compile this stem's cue, put them back
+                {
+                    for (int i = 0; i < song.Parts.Length; i++)
+                    {
+                        song.Parts[i].Solo = !regions && groups[i] == group;
+                        song.Parts[i].Mute = mute[i] || regions;
+                        if (song.Parts[i].Solo) notes += song.Parts[i].Notes.Count(n => n.Beat < end && n.Beat + n.Duration > start);
+                    }
+                    foreach (var r in sounding) r.Enabled = regions;
+                    if (regions) notes = sounding.Count(r => r.StartBeat < end && r.StartBeat + r.DurationBeats > start);
+                    try { cue = song.Compile(); }
+                    finally
+                    {
+                        for (int i = 0; i < song.Parts.Length; i++) { song.Parts[i].Solo = false; song.Parts[i].Mute = mute[i]; }
+                        foreach (var r in sounding) r.Enabled = true;
+                    }
+                }
+                string temp = Path.GetTempFileName();
+                try
+                {
+                    var stem = RenderToFloat(cue, rate, startSeconds, frames, temp);
+                    string file = Path.Combine(folder, Safe(group) + ".wav");
+                    CopyToWav(temp, file, rate, bits, gain);
+                    results[k] = new Dictionary<string, object> { ["name"] = group, ["kind"] = regions ? "regions" : "track",
+                        ["file"] = Path.GetFullPath(file), ["notes"] = notes, ["rmsDb"] = Db(stem.Rms), ["peakDb"] = Db(stem.Peak),
+                        ["peakVoices"] = stem.PeakVoices };
+                }
+                finally { File.Delete(temp); }
+            });
+            return results.Cast<object>().ToList();
         }
 
         /// <summary>

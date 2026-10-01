@@ -76,7 +76,10 @@ def _pitch(token, where):
 
 
 def _velocity(token, where):
-    v = float(token)
+    try:
+        v = float(token)
+    except (TypeError, ValueError):
+        raise SpecError(f"{where}: velocity '{token}' is not a number (0-1 or 1-127, e.g. @0.7)") from None
     if v > 1:
         v /= 127.0
     if not 0 < v <= 1:
@@ -114,14 +117,18 @@ def _events(text, where):
 
 
 def _melody(text, where):
-    """Sequential tokens 'pitch:dur' (chord 'C4+E4+G4:2', rest 'r:1', velocity suffix '@0.7'); a bare pitch reuses the last
-    duration. '|' bar lines are ignored."""
-    notes, beat, dur = [], 0.0, 1.0
+    """Sequential tokens 'pitch:dur' (chord 'C4+E4+G4:2', rest 'r:1'); a bare pitch reuses the last duration. A token '@0.7'
+    on its own sets the velocity of the notes after it; a suffix 'E5:1@0.7' sets it for that note only. '|' bar lines are
+    ignored."""
+    notes, beat, dur, level = [], 0.0, 1.0, 1.0
     for token in text.replace("|", " ").split():
-        vel = 1.0
+        if token.startswith("@"):
+            level = _velocity(token[1:], f"{where} '{token}'")
+            continue
+        vel = level
         if "@" in token:
             token, v = token.split("@", 1)
-            vel = _velocity(v, f"{where} '{token}'")
+            vel = _velocity(v, f"{where} '{token}@{v}'")
         if ":" in token:
             token, d = token.split(":", 1)
             dur = _num(d, where)
