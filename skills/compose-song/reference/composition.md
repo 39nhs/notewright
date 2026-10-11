@@ -17,6 +17,21 @@ Write music, not just notes: decide form, harmony, melody and groove first, then
 5. **Energy curve**: add/remove layers per section; raise register, density and velocity toward choruses; drop elements before
    a big entry (a bar of silence or only pads before the chorus works).
 
+## Start and end (default)
+
+Unless the user asks for a cold open, a hard ending or a seamless loop, every song gets room to breathe at both ends, so it
+neither jumps in at full level nor stops dead:
+
+- **Lead-in, 1–2 bars:** before the first full-band bar, something soft sets the key and tempo — a pad or held chord, a quiet
+  piano/guitar figure, ambience or a noise swell. Fade it in (`masterAutomation` `volume` from about -30 dB to 0 over the bars,
+  or a track `volume` lane), and let drums, bass and melody enter after it. A longer intro section counts if it starts thin.
+- **Ring-out, 1–2 bars:** the last bars hold the final chord (or a last hit) and start nothing new; fade with `masterAutomation`
+  `volume` down to about -40 dB (`smooth`), keep the reverb/echo sends on so it rings, and leave the render `tail` (2 s default,
+  `output.tail` 3–4 s for big reverbs) for the last of the decay.
+- Seamless game loops are the exception: no lead-in or ring-out; the last bar leads back into the first (see Form above).
+
+The render `advice` flags a song that starts or ends at almost full level.
+
 ## Reference songs
 
 When the user names a song to work from ("like X", "X 느낌으로") and does not say how to use it, the default is fixed: **borrow

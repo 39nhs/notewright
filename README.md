@@ -35,7 +35,7 @@ Claude가 **com.graze.music 엔진(재생 V3)** 으로 곡을 작곡·편곡·�
 | macOS | **.NET 8 SDK** (`brew install --cask dotnet-sdk`) 또는 Mono (`brew install mono`) |
 
 어느 런타임이든 바이트 단위로 같은 소리를 냅니다(엔진 테스트를 Mono와 .NET 양쪽에서 실행). .NET SDK가 있으면 먼저 쓰고,
-.NET Framework나 Mono보다 약 2배 빠릅니다. `doctor`가 더 빠른 런타임을 쓸 수 있으면 `faster`로 알려 줍니다. 런타임이 없어도 MIDI와 악보는 만들 수 있습니다(`render --score-only`).
+.NET Framework나 Mono보다 약 2배 빠릅니다. 작업을 시작할 때 Claude가 `setup`으로 환경을 점검하고 고칩니다: 설치된 런타임마다 시험 렌더를 해서 잘 되는 것 중 가장 빠른 것을 고르고(깨진 설치는 건너뜀), 폴더 쓰기 권한·여유 공간·다운로드 경로를 확인하며, 결과는 환경이 바뀔 때까지 캐시합니다. 런타임이 없어도 MIDI와 악보는 만들 수 있습니다(`render --score-only`).
 PDF 악보는 선택 사항: [MuseScore](https://musescore.org).
 
 Claude Code에서:
@@ -54,7 +54,7 @@ claude.ai 채팅·Cowork에서는 **Customize → Plugins**에서 마켓플레�
 ## 명령어 (Claude가 쓰는 CLI, 직접 써도 됨)
 
 ```bash
-python3 notewright.py doctor                              # 환경 점검 + 렌더러 빌드(첫 실행 시 C# 컴파일러 자동 다운로드)
+python3 notewright.py setup                               # 환경 점검·수정 + 렌더러 빌드와 시험 렌더(첫 실행 시 C# 컴파일러 자동 다운로드), 결과 캐시
 python3 notewright.py instruments find warm pad           # 악기 검색
 python3 notewright.py instruments scan ~/Samples/MyPiano  # 내 악기 등록
 python3 notewright.py new mysong.json --template pop      # 템플릿(pop, orchestral)
@@ -91,7 +91,7 @@ python3 notewright.py render mysong.json --section chorus # 일부만 빠르게
   `https://api.nuget.org/v3-flatcontainer/microsoft.net.compilers.toolset/` (.NET SDK는 자체 컴파일러를 써서 받지 않음)
 - VSCO 2 CE 악기: 곡에 쓰는 샘플만 — `https://raw.githubusercontent.com/sgossner/VSCO-2-CE/<고정 커밋>/`, 이 주소가 막혀 있으면
   같은 커밋을 git으로 `https://github.com/sgossner/VSCO-2-CE`에서 (필요한 파일만 받는 임시 저장소, 받은 뒤 삭제)
-- `doctor`는 위 악기 주소에 접속되는지 확인합니다(작은 파일 1개 요청, 또는 `git ls-remote`).
+- `setup`/`doctor`는 위 악기 주소에 접속되는지 확인합니다(작은 파일 1개 요청, 또는 `git ls-remote`). `setup`은 `~/.notewright`에 `setup.json`(점검 결과 캐시)과 `runtime.json`(검증된 런타임)을 씁니다.
 - 플러그인이 시스템 패키지를 직접 설치하지는 않습니다. claude.ai·Cowork 같은 일회용 실행 환경에서는 스킬 안내에 따라 Claude가
   `dotnet-sdk-8.0`을 OS 패키지 저장소에서 설치할 수 있고, 내 컴퓨터에서는 설치 명령을 알려 주기만 합니다.
 - 위 파일과 빌드된 렌더러, 악기 카탈로그는 `~/.notewright`(`NOTEWRIGHT_HOME`)에 저장합니다. 렌더 결과는 스펙 폴더의 `out/`에 씁니다.

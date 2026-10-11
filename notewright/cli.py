@@ -73,6 +73,90 @@ def cmd_doctor(args):
     return 0 if info["ok"] else 1
 
 
+def _fingerprint():
+    """What setup's result depends on: plugin and engine sources, Python, OS, runtimes on PATH, settings and the data folder."""
+    import hashlib
+    import shutil
+    digest = hashlib.sha256()
+    for source in paths.engine_sources():
+        digest.update(source.read_bytes())
+    keys = {"version": __version__, "engine": digest.hexdigest()[:16], "python": sys.version.split()[0], "platform": sys.platform,
+            "dotnet": shutil.which("dotnet"), "mono": shutil.which("mono"), "home": str(paths.home())}
+    keys.update({k: os.environ.get(k) for k in ("NOTEWRIGHT_RUNTIME", "NOTEWRIGHT_DOWNLOAD", "DOTNET_ROOT")})
+    return keys
+
+
+def cmd_setup(args):
+    """Start-of-work check that fixes what it can: Python, data and temp folders, the renderer (a test render on each installed
+    runtime, keeping the fastest that works), built-in instruments, downloads, MuseScore. Cached until the environment changes."""
+    import shutil
+    import tempfile
+    cache = paths.home() / "setup.json"
+    fingerprint = _fingerprint()
+    if not args.force:
+        try:
+            saved = json.loads(cache.read_text(encoding="utf-8"))
+            if saved.get("fingerprint") == fingerprint and saved["result"].get("ok"):
+                _print(dict(saved["result"], cached=True))
+                return 0
+        except (OSError, ValueError, KeyError):
+            pass
+    checks, actions = [], []
+
+    def check(name, status, detail, fix=None):
+        checks.append(dict({"name": name, "status": status, "detail": detail}, **({"fix": fix} if fix else {})))
+        if fix and status in ("action", "warning"):
+            actions.append(f"{name}: {fix}")
+
+    check("python", "ok" if sys.version_info >= (3, 9) else "action", sys.version.split()[0],
+          None if sys.version_info >= (3, 9) else "install Python 3.9 or newer")
+    for name, folder in (("data folder", paths.home()), ("temp folder", Path(tempfile.gettempdir()))):
+        try:
+            probe = folder / f".notewright-probe-{os.getpid()}"
+            probe.write_bytes(b"ok")
+            probe.unlink()
+            free = shutil.disk_usage(folder).free // (1 << 20)
+            if free < 300:
+                check(name, "warning", f"{folder}: {free} MB free", "free disk space: renders, stems and instruments need a few hundred MB")
+            else:
+                check(name, "ok", f"{folder} ({free} MB free)")
+        except OSError as error:
+            hint = "set NOTEWRIGHT_HOME to a writable folder" if name == "data folder" else "set TMP/TEMP (TMPDIR on Linux/macOS) to a writable folder"
+            check(name, "action", f"{folder}: {error}", hint)
+    rt = engine.setup_runtime()
+    for t in rt["tried"]:
+        if t["status"] == "failed":
+            check(f"runtime {t['runtime']}", "fixed" if rt["ok"] else "action", "installed but the test render failed: " + t["detail"],
+                  None if rt["ok"] else "reinstall it (or remove it so another runtime is used)")
+    if rt["ok"]:
+        check("renderer", "ok", f"{rt['runtime']}: built and rendered a test bar" + (" (others failed, see above)" if any(
+            t["status"] == "failed" for t in rt["tried"]) else ""))
+        if rt["kind"] != "dotnet":
+            check("speed", "warning", f"rendering with {rt['kind']}; the .NET SDK is about 2x faster with identical output",
+                  f"install the .NET 8 SDK ({engine.sdk_hint()}) and run setup again")
+    else:
+        check("renderer", "action", "no runtime can render here", rt["fix"] + "; until then render --score-only writes MIDI and MusicXML")
+    try:
+        catalog.resolve("synth:drum-kit", auto_fetch=False)
+        check("built-in instruments", "ok", "synth:* generated")
+    except Exception as error:  # report, don't crash
+        check("built-in instruments", "action", str(error), "check the data folder (NOTEWRIGHT_HOME)")
+    downloads = catalog.downloads()
+    if downloads:
+        check("instrument downloads", "ok", downloads + (" (github.com only: git is used)" if downloads == "git" else ""))
+    else:
+        check("instrument downloads", "warning", "github.com is not reachable", "use built-in synths, the engine synth and the user's own "
+              "instruments; VSCO 2 needs network access to github.com (git or raw.githubusercontent.com)")
+    musescore = export.musescore()
+    check("musescore", "ok" if musescore else "info", musescore or "not installed: --pdf is unavailable (MusicXML still works)")
+    ok = rt["ok"] and not any(c["status"] == "action" for c in checks)
+    result = {"ok": ok, "version": __version__, "runtime": rt.get("runtime"), "checks": checks, "actions": actions, "cached": False}
+    if ok:
+        cache.write_text(json.dumps({"fingerprint": fingerprint, "result": result}, ensure_ascii=False), encoding="utf-8")
+    _print(result)
+    return 0 if ok else 1
+
+
 def cmd_instruments(args):
     action = args.action
     if action == "list":
@@ -152,7 +236,8 @@ def cmd_check(args):
     return 0
 
 
-def _advice(report, meta, sections):
+def _advice(report, meta, sections, per_second=None, tail=0.0):
+    """Mixing tips from the report. per_second (full renders only) also checks the start and end for a lead-in and a ring-out."""
     tips = []
     if report.get("droppedNotes"):
         tips.append(f"{report['droppedNotes']} notes were dropped by the voice limit ({report['voiceLimit']}): shorten releases or thin dense parts")
@@ -175,6 +260,17 @@ def _advice(report, meta, sections):
     levels = [s for s in sections if s.get("rmsDb") is not None]
     if len(levels) > 2 and max(s["rmsDb"] for s in levels) - min(s["rmsDb"] for s in levels) < 2:
         tips.append("sections have nearly the same loudness: consider more dynamic contrast (thinner verses, fuller choruses)")
+    song = int(report.get("seconds", 0) - tail)                    # whole seconds before the render tail
+    if per_second and song >= 4:
+        loudest = max(rms for rms, _ in per_second[:song])
+        first, last = per_second[0][0], per_second[song - 1][0]
+        if first > loudest - 6:
+            tips.append(f"the song starts at almost full level (first second {first:.1f} dB, loudest {loudest:.1f} dB): unless the user wants "
+                        "a cold open or a seamless loop, give it a 1-2 bar lead-in (a pad or held chord fading in, e.g. masterAutomation "
+                        "volume from -30 dB, with drums and melody entering after)")
+        if last > loudest - 6:
+            tips.append(f"the song ends at almost full level (last second {last:.1f} dB, loudest {loudest:.1f} dB): unless it is a seamless "
+                        "loop, let the last 1-2 bars ring out (hold the final chord, start nothing new, fade with masterAutomation volume)")
     return tips
 
 
@@ -232,7 +328,9 @@ def cmd_render(args):
         result["sections"] = sections
         if report.get("parts"):
             result["stems"] = [{k: p[k] for k in ("name", "kind", "file", "notes", "rmsDb", "peakDb")} for p in report["parts"]]
-        result["advice"] = _advice(report, meta, sections)
+        full = start is None and length is None
+        result["advice"] = _advice(report, meta, sections, per_second if full else None,
+                                   args.tail if args.tail is not None else output.get("tail", 2.0))
         result["files"]["report"] = str(out_dir / "report.json")
     if not args.no_score:
         mid = out_dir / f"{slug}.mid"
@@ -263,6 +361,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="notewright", description=f"notewright {__version__}: compose with the com.graze.music engine")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor", help="check Python, .NET/Mono, the renderer build, instrument downloads and MuseScore")
+    p = sub.add_parser("setup", help="start-of-work check that fixes what it can (test render on each runtime, keeps the fastest that works); cached")
+    p.add_argument("--force", action="store_true", help="run every check again instead of using the cached result")
     p = sub.add_parser("instruments", help="list / find / fetch / scan / add / info / remove instruments")
     p.add_argument("action", choices=["list", "find", "fetch", "scan", "add", "info", "remove"])
     p.add_argument("terms", nargs="*")
@@ -303,7 +403,7 @@ def main(argv=None):
         if hasattr(stream, "reconfigure") and (stream.encoding or "").lower().replace("-", "") != "utf8":
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     args = parser.parse_args(argv)
-    handlers = {"doctor": cmd_doctor, "instruments": cmd_instruments, "new": cmd_new, "check": cmd_check, "render": cmd_render,
+    handlers = {"doctor": cmd_doctor, "setup": cmd_setup, "instruments": cmd_instruments, "new": cmd_new, "check": cmd_check, "render": cmd_render,
                 "convert": cmd_convert}
     try:
         return handlers[args.command](args)

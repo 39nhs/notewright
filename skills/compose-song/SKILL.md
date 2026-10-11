@@ -21,30 +21,33 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
 
 ## Workflow
 
-1. **First use:** `doctor`. It reports the runtime that renders audio (`runtime`), how instruments download
-   (`instrumentDownloads`) and, if rendering is not possible, `error` and `fix`. The renderer runs on the .NET 6+ SDK
-   (`dotnet`, used first when installed), Windows' built-in .NET Framework (`netfx`) or Mono; with Mono or .NET Framework the
-   first run downloads the C# compiler (~10 MB, once). All of them render byte-identical audio, but `dotnet` is about twice as
-   fast, which adds up over stems and several mix passes.
-   - **`faster` in the report** (`ok` is true but the runtime is `netfx` or `mono`): improve the runtime before the first
-     render. If it says dotnet is already installed, use it (unset `NOTEWRIGHT_RUNTIME` or set it to `dotnet`). Otherwise, on
-     the user's own computer, show the install command it names and ask before installing; in a disposable sandbox, install
-     the .NET 8 SDK yourself (below) and run `doctor` again.
-   - **On the user's own computer:** if `ok` is false, tell the user the `fix` command; don't install system packages yourself
-     unless they say so.
-   - **In a disposable sandbox** (claude.ai chat, Cowork, a cloud session): if `ok` is false and you can install packages,
-     install the .NET 8 SDK from the OS package archive and run `doctor` again — Debian/Ubuntu:
-     `apt-get update && apt-get install -y --no-install-recommends dotnet-sdk-8.0` (prefix `sudo` when not root).
+1. **Start of every task: `setup`** — the start-up loop that heads off problems of this particular computer or sandbox. It
+   checks Python, the data and temp folders (writable, free space), the renderer (it builds it and renders a test bar on each
+   installed runtime, fastest first, and keeps the first that works, so a broken .NET install falls back to .NET Framework or
+   Mono by itself), the built-in instruments, instrument downloads and MuseScore. It fixes what it can, lists the rest in
+   `actions`, and caches a good result, so later runs answer at once until something changes (a new plugin version, a newly
+   installed runtime, other settings). Loop until it is clean:
+   - For each item in `actions`: on the user's own computer, tell the user the command and ask before installing anything;
+     in a disposable sandbox (claude.ai chat, Cowork, a cloud session), do it yourself — e.g. the .NET 8 SDK from the OS
+     package archive, Debian/Ubuntu: `apt-get update && apt-get install -y --no-install-recommends dotnet-sdk-8.0` (prefix `sudo`
+     when not root). Then run `setup --force` again.
+   - Stop when `ok` is true and nothing in `actions` can still be done here (a `speed` warning on the user's computer when they
+     decline the SDK is fine).
+   The renderer runs on the .NET 6+ SDK (`dotnet`), Windows' built-in .NET Framework (`netfx`) or Mono; all render byte-identical
+   audio, `dotnet` about twice as fast. With Mono or .NET Framework the first run downloads the C# compiler (~10 MB, once).
+   `doctor` is the same check without fixing or caching, for diagnosing.
    - **No runtime at all:** still deliver the music: `render <spec> --score-only` writes the MIDI and MusicXML score without
      the renderer. Say the WAV needs .NET or Mono (Claude Code on a computer, or a sandbox that can install packages).
-   - `instrumentDownloads`: `https`, or `git` when only github.com is reachable (handled automatically, git must be installed).
-     If it is unavailable, use built-in synths (`synth:*`) and the user's own instruments, and say that VSCO 2 needs network
-     access to github.com (on claude.ai: code execution network access "package managers" or wider).
+   - `instrument downloads`: `https`, or `git` when only github.com is reachable (handled automatically, git must be installed).
+     If it is unavailable, use built-in synths (`synth:*`), the engine synth and the user's own instruments, and say that VSCO 2
+     needs network access to github.com (on claude.ai: code execution network access "package managers" or wider).
 2. **Understand the brief:** genre, mood, tempo, length, key, instruments, output formats (WAV / stems / MIDI / sheet music
    PDF / Unity). Ask only about what you cannot reasonably choose yourself; otherwise decide and say what you chose.
    **A reference song** ("like X", "in the style of X"): unless the user says how to use it, borrow part of its chord
    progression so a listener recognizes it on first hearing, and write your own melody over it; see
    [reference/composition.md](reference/composition.md#reference-songs).
+   **Start and end:** unless the user wants a cold open, a hard ending or a seamless loop, give every song a soft 1–2 bar
+   lead-in and let its last 1–2 bars ring out; see [reference/composition.md](reference/composition.md#start-and-end-default).
 3. **Pick instruments** (see [reference/instruments.md](reference/instruments.md)):
    - `instruments find <words> [--kind drums]` searches built-in synths, the downloadable VSCO 2 CE orchestra and anything
      scanned on this computer. Use the ids it returns, or write `"find:<words>"` in the spec to pick the best match automatically.
@@ -93,5 +96,3 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
   (for example its outputs folder), or copy the deliverables there.
 - Don't overwrite a user's spec or output without asking; write new files or versioned names (`song-v2.json`).
 - Credit instrument sources when delivering. Files from the user's own libraries keep their own licenses.
-- If the user wants the song inside the Unity game project, deliver `--unity` output and point to `SongJsonBuilder.Build`
-  (the com.graze.music Unity package; see `${CLAUDE_PLUGIN_ROOT}/engine/song-json.md`); do not edit the game repository unless asked.

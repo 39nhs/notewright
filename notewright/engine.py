@@ -100,12 +100,31 @@ def _dotnet():
 FINDERS = {"netfx": _netfx, "dotnet": _dotnet, "mono": _mono}
 
 
+def _order():
+    return ["dotnet", "netfx", "mono"] if os.name == "nt" else ["dotnet", "mono"]
+
+
+def _verified_file():
+    return paths.home() / "runtime.json"
+
+
+def verified_kind():
+    """The runtime `setup` last verified with a test render here, or None."""
+    try:
+        kind = json.loads(_verified_file().read_text(encoding="utf-8")).get("kind")
+        return kind if kind in FINDERS else None
+    except (OSError, ValueError):
+        return None
+
+
 def runtime() -> dict:
-    """The .NET runtime that builds and runs the renderer (see the module docstring for the order)."""
+    """The .NET runtime that builds and runs the renderer: NOTEWRIGHT_RUNTIME, else the one `setup` verified (while it is still
+    installed), else the first found in the module docstring's order."""
     choice = os.environ.get("NOTEWRIGHT_RUNTIME", "").strip().lower()
     if choice and choice not in FINDERS:
         raise EngineError(f"NOTEWRIGHT_RUNTIME={choice}: use one of {', '.join(FINDERS)}")
-    order = [choice] if choice else (["dotnet", "netfx", "mono"] if os.name == "nt" else ["dotnet", "mono"])
+    verified = None if choice else verified_kind()
+    order = [choice] if choice else ([verified] if verified else []) + [k for k in _order() if k != verified]
     problems = []
     for kind in order:
         try:
@@ -133,9 +152,9 @@ def _roslyn():
     return csc
 
 
-def build(force=False) -> Path:
+def build(force=False, rt=None) -> Path:
     """Compiles the renderer if the engine or renderer sources changed; returns the exe (or .dll on .NET) path."""
-    rt = runtime()
+    rt = rt or runtime()
     sources = paths.engine_sources()
     digest = hashlib.sha256()
     for source in sources:
@@ -159,9 +178,10 @@ def build(force=False) -> Path:
 
 
 def render(song_json: Path, out_wav: Path, *, rate=48000, bits=16, start_beat=None, length_beats=None, tail=0.0,
-           normalize=None, stems_dir=None, jobs=1) -> dict:
-    exe = build()
-    command = runtime()["run"] + [str(exe), "render", "--song", str(song_json), "--out", str(out_wav), "--rate", str(rate), "--bits", str(bits),
+           normalize=None, stems_dir=None, jobs=1, rt=None) -> dict:
+    rt = rt or runtime()
+    exe = build(rt=rt)
+    command = rt["run"] + [str(exe), "render", "--song", str(song_json), "--out", str(out_wav), "--rate", str(rate), "--bits", str(bits),
                       "--tail", str(tail)]
     if start_beat is not None:
         command += ["--start", str(start_beat)]
@@ -179,6 +199,52 @@ def render(song_json: Path, out_wav: Path, *, rate=48000, bits=16, start_beat=No
     if not report.get("ok"):
         raise EngineError(report.get("error", "render failed"))
     return report
+
+
+def _smoke(rt):
+    """Builds the renderer with this runtime and renders a one-bar song with the built-in synth; returns its peak (dBFS)."""
+    import tempfile
+    folder = Path(tempfile.mkdtemp(prefix="notewright-setup-"))
+    try:
+        song = {"name": "setup", "bpm": 120, "beatsPerBar": 4, "loopBeats": 4, "playbackVersion": 3,
+                "parts": [{"name": "test", "layer": "Melody", "synthPreset": "Pluck", "gain": .5, "notes": [0, 1, 60, .8, 1, 1, 64, .8]}]}
+        (folder / "setup.song.json").write_text(json.dumps(song), encoding="utf-8")
+        report = render(folder / "setup.song.json", folder / "setup.wav", rate=22050, tail=.2, rt=rt)
+        if report["peakDb"] < -60:
+            raise EngineError(f"the test render with {rt['kind']} is silent")
+        return report["peakDb"]
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def setup_runtime() -> dict:
+    """Finds the runtime that really works here: tries each installed one in order (fastest first) with a build and a test render,
+    keeps the first that passes (saved for later runs) and reports the others. NOTEWRIGHT_RUNTIME limits it to that one."""
+    choice = os.environ.get("NOTEWRIGHT_RUNTIME", "").strip().lower()
+    kinds = [choice] if choice else _order()
+    tried = []
+    for kind in kinds:
+        if kind not in FINDERS:
+            raise EngineError(f"NOTEWRIGHT_RUNTIME={kind}: use one of {', '.join(FINDERS)}")
+        try:
+            rt = FINDERS[kind]()
+        except EngineError as error:
+            tried.append({"runtime": kind, "status": "not installed", "detail": str(error)})
+            continue
+        try:
+            _smoke(rt)
+        except Exception as error:  # a broken install: fall back to the next runtime
+            tried.append({"runtime": kind, "status": "failed", "detail": str(error)[-600:]})
+            continue
+        tried.append({"runtime": kind, "status": "ok", "version": rt["version"]})
+        if not choice:
+            _verified_file().write_text(json.dumps({"kind": kind}), encoding="utf-8")
+        return {"ok": True, "runtime": (rt["kind"] + " " + rt["version"]).strip(), "kind": kind, "tried": tried}
+    try:
+        _verified_file().unlink()
+    except OSError:
+        pass
+    return {"ok": False, "tried": tried, "fix": install_hint()}
 
 
 def doctor() -> dict:
