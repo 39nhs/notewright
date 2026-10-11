@@ -9,23 +9,50 @@ import subprocess
 from pathlib import Path
 
 
+def _file_refs(song):
+    """Every (object, key) of a song.json that names a file: part samples, zones, variants, audio regions, wavetables and IRs."""
+    refs = []
+    for part in song["parts"]:
+        refs += [(part, k) for k in ("sample", "wavetable", "impulse") if part.get(k)]
+        for key in ("zones", "variants", "regions"):
+            refs += [(item, "sample") for item in part.get(key) or [] if item.get("sample")]
+    refs += [(bus, "impulse") for bus in song.get("buses") or [] if bus.get("impulse")]
+    if song.get("masterImpulse"):
+        refs.append((song, "masterImpulse"))
+    return refs
+
+
 def unity_folder(song, meta, folder: Path, name: str):
-    """<folder>/<name>.song.json with sample names relative to <folder>/Samples/, the samples copied there, and CREDITS.md.
+    """<folder>/<name>.song.json with file names relative to <folder>/Samples/, the files copied there, and CREDITS.md.
     In Unity, SongJsonBuilder.Build(folder, name, ...) turns it into a MusicCueDefinition asset."""
     folder.mkdir(parents=True, exist_ok=True)
     samples = folder / "Samples"
     samples.mkdir(exist_ok=True)
     out = copy.deepcopy(song)
-    names = {}
-    for part, info in zip(out["parts"], meta["parts"]):
-        source = Path(part["sample"])
+    instrument = {info["name"]: info["instrument"] for info in meta["parts"]}
+    names, taken = {}, set()
+    for part in out["parts"]:
+        prefix = re.sub(r"[^A-Za-z0-9]+", "-", instrument.get(part["name"], part["name"])).strip("-")
+        for owner, key in _file_refs({"parts": [part]}):
+            source = Path(owner[key])
+            if source not in names:
+                target = f"{prefix}-{source.stem}.wav"
+                for i in range(2, 10 ** 6):
+                    if target not in taken:
+                        break
+                    target = f"{prefix}-{source.stem}-{i}.wav"
+                shutil.copyfile(source, samples / target)
+                names[source], _ = target, taken.add(target)
+            owner[key] = names[source]
+        part.pop("stem", None)                                  # renderer-only key
+    song_refs = [(bus, "impulse") for bus in out.get("buses") or [] if bus.get("impulse")] + ([(out, "masterImpulse")] if out.get("masterImpulse") else [])
+    for owner, key in song_refs:
+        source = Path(owner[key])
         if source not in names:
-            prefix = re.sub(r"[^A-Za-z0-9]+", "-", info["instrument"]).strip("-")
-            target = f"{prefix}-{source.stem}.wav"
+            target = f"ir-{source.stem}.wav"
             shutil.copyfile(source, samples / target)
             names[source] = target
-        part["sample"] = names[source]
-        part.pop("stem", None)                                  # renderer-only key
+        owner[key] = names[source]
     path = folder / f"{name}.song.json"
     path.write_text(json.dumps(out, indent=1, ensure_ascii=False), encoding="utf-8")
     lines = [f"# {meta['title']} — instruments", ""]

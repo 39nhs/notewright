@@ -17,14 +17,33 @@ LAYERS = ("Melody", "Bass", "Harmony", "Drums")
 DRIVE_MODES = ("Soft", "Hard", "Fold", "Fuzz")                      # MusicDriveMode order
 NOISE_KINDS = ("White", "Pink", "Brown", "Sample", "SlowingGlitch", "AcceleratingGlitch", "PitchGlitch", "StutterGlitch",
                "BitcrushGlitch", "GateGlitch")                       # MusicNoiseKind order
-MIXER_FIELDS = {"OutputDb", "LowPassHz", "HighPassHz", "Compressor", "ThresholdDb", "Ratio", "AttackMs", "ReleaseMs", "EchoWet",
-                "EchoSeconds", "EchoFeedback", "CrushBits", "CrushDownsample", "CrushMix", "NoiseGate", "NoiseGateThresholdDb",
-                "NoiseGateRangeDb", "NoiseGateHoldMs", "NoiseGateReleaseMs", "Gate", "GateBeats", "GateOpen", "GateDepth", "GatePattern",
-                "Drive", "DriveMode", "DriveDb", "DriveMix", "DriveToneHz", "DriveKeepBassHz", "DriveTrimDb"}
+MIXER_V1 = {"OutputDb", "LowPassHz", "HighPassHz", "Compressor", "ThresholdDb", "Ratio", "AttackMs", "ReleaseMs", "EchoWet",
+            "EchoSeconds", "EchoFeedback", "CrushBits", "CrushDownsample", "CrushMix", "NoiseGate", "NoiseGateThresholdDb",
+            "NoiseGateRangeDb", "NoiseGateHoldMs", "NoiseGateReleaseMs", "Gate", "GateBeats", "GateOpen", "GateDepth", "GatePattern"}
+MIXER_V2 = {"Drive", "DriveMode", "DriveDb", "DriveMix", "DriveToneHz", "DriveKeepBassHz", "DriveTrimDb",
+            "Amp", "AmpModel", "AmpGainDb", "AmpTightHz", "AmpBassDb", "AmpMidDb", "AmpTrebleDb", "AmpPresenceDb", "AmpLevelDb",
+            "Cabinet", "CabinetMix", "Eq", "EqLowDb", "EqLowHz", "EqMidDb", "EqMidHz", "EqMidQ", "EqHighDb", "EqHighHz",
+            "Chorus", "ChorusMix", "ChorusRateHz", "ChorusDepthMs", "ChorusDelayMs",
+            "Reverb", "ReverbMix", "ReverbSize", "ReverbDamping", "ReverbWidth", "ReverbPreDelayMs"}
+MIXER_V3 = {"Limiter", "LimiterInputDb", "LimiterCeilingDb", "LimiterReleaseMs", "SidechainTrack", "EchoBeats", "Stutter", "StutterBeats",
+            "CabinetImpulseMix", "CabinetImpulseGainDb", "CabinetImpulseNormalize", "Color"}
+MIXER_FIELDS = MIXER_V1 | MIXER_V2 | MIXER_V3          # MusicMixerSettings (C# names; a test checks the list against the engine)
+AUTOMATION_TARGETS = ("volume", "pan", "lowpass", "highpass", "echo", "chorus", "reverb", "pitch", "modulation", "brightness", "gate",
+                      "crush", "drive", "driveMix", "stutter", "width", "speed", "rotary")   # MusicAutomation.JsonNames
+TRACK_ONLY_TARGETS = {"pan", "pitch", "modulation", "brightness"}
+CURVES = ("linear", "step", "smooth")                               # MusicAutomationCurve order
+SYNTH_PRESETS = ("Init", "Saw lead", "Square lead", "Pluck", "Warm pad", "Sub bass", "Acid bass", "Brass", "Bell keys", "Noise sweep",
+                 "Jazz organ", "Jazz organ perc", "Rock organ", "Gospel organ", "FM e-piano", "FM bell", "FM bass", "Wavetable pad",
+                 "Wavetable vox")                                   # MusicSynthPresets.Names
 REGION_FIELDS = {"Name", "Enabled", "Kind", "StartBeat", "DurationBeats", "Gain", "FadeInBeats", "FadeOutBeats", "Seed", "LoopSource",
                  "RepeatWithCue", "MasterFilter", "Wet", "GlitchRate", "PitchDepth"}
 TRACK_KEYS = {"instrument", "layer", "gain", "pan", "attack", "release", "glide", "drive", "driveMode", "effects", "transpose",
-              "velocity", "splits", "mute", "playbackVersion", "program", "clef", "score"}
+              "velocity", "splits", "mute", "playbackVersion", "program", "clef", "score",
+              # playback V3
+              "automation", "modulators", "output", "sends", "sampleShape", "articulations", "keySwitches", "vibratoRate", "ignoreSwing",
+              "stretchBpm", "stretchGrainMs", "loop", "impulse", "expression", "audio", "zones"}
+V3_TRACK_KEYS = TRACK_KEYS - {"instrument", "layer", "gain", "pan", "attack", "release", "glide", "drive", "driveMode", "effects", "transpose",
+                              "velocity", "splits", "mute", "playbackVersion", "program", "clef", "score", "zones"}
 # Kit keys missing from a drum instrument fall back to a close sound before failing.
 DRUM_FALLBACK = {35: 36, 40: 38, 37: 38, 39: 38, 44: 42, 46: 42, 52: 49, 55: 49, 57: 49, 53: 51, 59: 51, 41: 45, 43: 45, 48: 47,
                  45: 47, 50: 47, 54: 42, 70: 42, 69: 42, 56: 37, 81: 51}
@@ -298,6 +317,80 @@ def _mixer(fields, where):
     return out
 
 
+def _track_v3(part, t, name, meter, sections, bus_names, expression, notes, clips):
+    """Copies a track's playback V3 settings onto one of its engine parts."""
+    where = f"track '{name}'"
+    if t.get("automation"):
+        part["automation"] = _lanes(t["automation"], where + ".automation", meter, sections)
+    if t.get("modulators"):
+        mods = t["modulators"] if isinstance(t["modulators"], list) else [t["modulators"]]
+        for i, m in enumerate(mods):
+            m = _plain(m, f"{where}.modulators[{i}]", {"kind", "target", "amount", "wave", "rateHz", "syncBeats", "phase", "source", "attackMs",
+                                                       "releaseMs", "disabled"})
+            if m.get("target") not in AUTOMATION_TARGETS:
+                raise SpecError(f"{where}.modulators[{i}]: target must be one of {', '.join(AUTOMATION_TARGETS)}")
+        part["modulators"] = mods
+    if t.get("output"):
+        if t["output"] not in bus_names:
+            raise SpecError(f"{where}: output '{t['output']}' is not a bus ({', '.join(sorted(bus_names)) or 'no buses'})")
+        part["output"] = t["output"]
+    if t.get("sends"):
+        sends = []
+        for i, send in enumerate(t["sends"] if isinstance(t["sends"], list) else [t["sends"]]):
+            send = _plain(send, f"{where}.sends[{i}]", {"bus", "db", "preFader", "automation"})
+            if send.get("bus") not in bus_names:
+                raise SpecError(f"{where}.sends[{i}]: bus '{send.get('bus')}' is not defined ({', '.join(sorted(bus_names)) or 'no buses'})")
+            out = {"bus": send["bus"], "db": float(send.get("db", 0))}
+            if send.get("preFader"):
+                out["preFader"] = True
+            if send.get("automation"):
+                out["automation"] = {"target": "volume", "points": _points(send["automation"], f"{where}.sends[{i}].automation", meter, sections)}
+            sends.append(out)
+        part["sends"] = sends
+    for key in ("sampleShape", "vibratoRate", "ignoreSwing", "stretchBpm", "stretchGrainMs"):
+        if key in t:
+            part[key] = _plain(t[key], f"{where}.{key}") if key == "sampleShape" else t[key]
+    if t.get("articulations"):
+        part["articulations"] = [_plain(a, f"{where}.articulations[{i}]", {"Id", "Name", "StartSeconds", "GainDb", "LengthScale"})
+                                 for i, a in enumerate(t["articulations"])]
+    if t.get("keySwitches"):
+        part["keySwitches"] = [{"Key": _pitch(str(k.get("Key", k.get("key"))), f"{where}.keySwitches[{i}]"),
+                                "Articulation": int(k.get("Articulation", k.get("articulation", 0)))} for i, k in enumerate(t["keySwitches"])]
+    if t.get("loop"):
+        loop = _plain(t["loop"], where + ".loop", {"start", "end", "crossfade"})
+        if "zones" in part:
+            for zone in part["zones"]:
+                zone["loopStart"], zone["loopEnd"] = float(loop.get("start", 0)), float(loop["end"])
+        else:
+            part["loopStart"], part["loopEnd"] = float(loop.get("start", 0)), float(loop["end"])
+        if "crossfade" in loop:
+            part["loopCrossfade"] = float(loop["crossfade"])
+    mine = [e for e in expression if any(abs(n[0] - e["beat"]) < 1e-6 and n[2] == e["key"] for n in notes)]
+    if mine:
+        part["expression"] = mine
+    if clips:
+        part["regions"] = clips
+
+
+def _engine_synth(use, where):
+    """An instrument that is the engine's built-in synth (playback V3+): {"synthPreset": name} or {"synth": {C# fields}}."""
+    use = _plain(use, where, {"synth", "synthPreset", "wavetable", "name"})
+    if ("synth" in use) == ("synthPreset" in use):
+        raise SpecError(f"{where}: give either 'synth' (settings) or 'synthPreset' (one of {', '.join(SYNTH_PRESETS)})")
+    out = {"kind": "melodic", "regions": [], "license": "generated by the engine", "source": "built-in synth", "tags": ["synth"]}
+    if "synthPreset" in use:
+        match = [n for n in SYNTH_PRESETS if n.lower() == str(use["synthPreset"]).lower()]
+        if not match:
+            raise SpecError(f"{where}: unknown synthPreset '{use['synthPreset']}' (presets: {', '.join(SYNTH_PRESETS)})")
+        out.update(id=f"engine-synth:{match[0]}", name=use.get("name", match[0]), engineSynth={"synthPreset": match[0]})
+    else:
+        synth = dict(_plain(use["synth"], where + ".synth"), Enabled=True)
+        out.update(id="engine-synth:custom", name=use.get("name", "built-in synth"), engineSynth={"synth": synth})
+    if "wavetable" in use:
+        out["wavetable"] = use["wavetable"]
+    return out
+
+
 def _enum(value, names, where):
     if isinstance(value, int):
         return value
@@ -307,25 +400,137 @@ def _enum(value, names, where):
     return lowered.index(str(value).lower())
 
 
+# ---------- playback V3 data ----------
+
+def _points(points, where, meter, sections):
+    """Automation points → flattened beat, value, curve triples. A point is {bar|beat|section(+bar, beat), value, curve} or
+    [beat, value(, curve)]; curve is linear (default), step or smooth (the shape from this point to the next)."""
+    if not isinstance(points, list) or not points:
+        raise SpecError(f"{where}: expected a list of points")
+    out = []
+    for i, p in enumerate(points):
+        at = f"{where}[{i}]"
+        if isinstance(p, dict):
+            if "value" not in p:
+                raise SpecError(f"{at}: a point needs 'value'")
+            beat, value, curve = _bar_beat(p, meter, sections, at), p["value"], p.get("curve", "linear")
+        elif isinstance(p, list) and len(p) in (2, 3):
+            beat, value, curve = p[0], p[1], p[2] if len(p) == 3 else "linear"
+        else:
+            raise SpecError(f"{at}: a point is {{bar|beat|section, value, curve}} or [beat, value, curve]")
+        out += [round(float(beat), 6), float(value), _enum(curve, CURVES, at + ".curve")]
+    return out
+
+
+def _lanes(spec, where, meter, sections, master=False):
+    """{"volume": [points], "lowpass": {"points": [...], "disabled": true}, ...} → song.json lanes."""
+    if spec is None:
+        return []
+    if not isinstance(spec, dict):
+        raise SpecError(f"{where}: expected an object of target → points")
+    lanes = []
+    for target, value in spec.items():
+        if target not in AUTOMATION_TARGETS:
+            raise SpecError(f"{where}: unknown target '{target}' (targets: {', '.join(AUTOMATION_TARGETS)})")
+        if master and target in TRACK_ONLY_TARGETS:
+            raise SpecError(f"{where}: '{target}' is a track target (the master and buses have no {target} lane)")
+        if not master and target == "speed":
+            raise SpecError(f"{where}: 'speed' (tape speed) is a master lane only")
+        disabled = isinstance(value, dict) and bool(value.get("disabled"))
+        points = value.get("points") if isinstance(value, dict) else value
+        lane = {"target": target, "points": _points(points, f"{where}.{target}", meter, sections)}
+        if disabled:
+            lane["disabled"] = True
+        lanes.append(lane)
+    return lanes
+
+
+def _file(value, spec_dir, where):
+    path = Path(str(value)).expanduser()
+    if not path.is_absolute():
+        path = (Path(spec_dir) / path).resolve()
+    if not path.exists():
+        raise SpecError(f"{where}: file not found: {path}")
+    return str(path)
+
+
+def _plain(value, where, allowed=None):
+    """An object passed to the engine with C# field names (synth, sampleShape, ...)."""
+    if not isinstance(value, dict):
+        raise SpecError(f"{where}: expected an object")
+    if allowed is not None:
+        unknown = set(value) - allowed
+        if unknown:
+            raise SpecError(f"{where}: unknown keys {sorted(unknown)} (valid: {', '.join(sorted(allowed))})")
+    return dict(value)
+
+
+def _clips(clips, track, spec_dir, meter, sections):
+    """Track 'audio': recordings placed on the timeline → song.json part regions."""
+    out = []
+    keys = {"file", "bar", "beat", "section", "beats", "sourceStart", "gainDb", "fadeIn", "fadeOut", "semitones", "warp", "sourceBpm",
+            "markers", "mute"}
+    for i, c in enumerate(clips if isinstance(clips, list) else [clips]):
+        where = f"track '{track}'.audio[{i}]"
+        c = _plain(c, where, keys)
+        if "file" not in c or "beats" not in c:
+            raise SpecError(f"{where}: give 'file' and 'beats' (length on the timeline)")
+        region = {"sample": _file(c["file"], spec_dir, where + ".file"), "start": _bar_beat(c, meter, sections, where), "length": float(c["beats"])}
+        for key in ("sourceStart", "gainDb", "fadeIn", "fadeOut", "semitones", "sourceBpm", "mute"):
+            if key in c:
+                region[key] = c[key]
+        if "warp" in c:
+            region["warp"] = ("Off", "Tempo", "Markers")[_enum(c["warp"], ("Off", "Tempo", "Markers"), where + ".warp")]
+        if "markers" in c:
+            region["markers"] = [float(x) for pair in c["markers"] for x in pair]
+        out.append(region)
+    return out
+
+
+def _expression(entries, track, meter, sections, notes):
+    """Track 'expression': per-note bend, vibrato, articulation and variation, matched to a note by position and sounding pitch."""
+    out = []
+    fields = {"bendFrom", "bendTo", "bendStart", "bendEnd", "vibrato", "articulation", "skip", "every", "offset"}
+    for i, e in enumerate(entries if isinstance(entries, list) else [entries]):
+        where = f"track '{track}'.expression[{i}]"
+        e = _plain(e, where, fields | {"bar", "beat", "section", "note"})
+        if "note" not in e:
+            raise SpecError(f"{where}: give 'note' (the pitch as it sounds, e.g. E5) and its position")
+        beat, key = round(_bar_beat(e, meter, sections, where), 6), _pitch(str(e["note"]), where)
+        if not any(abs(n[0] - beat) < 1e-6 and n[2] == key for n in notes):
+            near = sorted(notes, key=lambda n: abs(n[0] - beat))[:3]
+            raise SpecError(f"{where}: no {note_name(key)} starts at beat {beat:g} (notes near: "
+                            f"{', '.join(f'{note_name(n[2])}@{n[0]:g}' for n in near) or 'none'})")
+        item = {"beat": beat, "key": key}
+        item.update({k: v for k, v in e.items() if k in fields})
+        out.append(item)
+    return out
+
+
 def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
     """Returns (song_json_dict, meta). meta: title, meter, bpm, tempo, sections, tracks [{name, instrument, drums, notes, ...}],
     parts [{name, track, sample, ...}], credits, warnings."""
     warnings = []
     known = {"title", "bpm", "meter", "key", "playbackVersion", "tempo", "master", "instruments", "tracks", "patterns", "sections",
-             "regions", "output", "notes", "source", "description"}
+             "regions", "output", "notes", "source", "description",
+             "swing", "swingGrid", "keys", "chords", "meterChanges", "targetLufs", "variationSeed", "buses", "masterAutomation",
+             "masterImpulse"}
     unknown = set(spec) - known
     if unknown:
         raise SpecError(f"unknown top-level keys {sorted(unknown)} (valid: {', '.join(sorted(known))})")
     title = spec.get("title", "Untitled")
     bpm = float(spec.get("bpm", 120))
     meter = int(spec.get("meter", 4))
-    version = int(spec.get("playbackVersion", 2))
+    version = int(spec.get("playbackVersion", 3))
     if not 10 <= bpm <= 60000:
         raise SpecError("bpm must be 10-60000")
 
     # instruments
     entries = {}
     for alias, use in (spec.get("instruments") or {}).items():
+        if isinstance(use, dict) and ("synth" in use or "synthPreset" in use) and "use" not in use:
+            entries[alias] = _engine_synth(use, f"instrument '{alias}'")
+            continue
         if isinstance(use, str) and not re.match(r"^\w+:", use):
             use = "find:" + use
         if isinstance(use, dict) and "use" in use and isinstance(use["use"], str) and ":" in use["use"]:
@@ -353,6 +558,9 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
         if unknown:
             raise SpecError(f"track '{name}': unknown keys {sorted(unknown)} (valid: {', '.join(sorted(TRACK_KEYS))})")
         alias = t.get("instrument", name)
+        if "instrument" not in t and "audio" in t and alias not in entries:
+            entries[alias] = {"id": "audio", "name": "audio clips", "kind": "melodic", "audioOnly": True, "regions": [], "license": "",
+                              "source": "the user's recordings"}
         if alias not in entries:
             if isinstance(alias, str) and ":" in alias:
                 entries[alias] = catalog.resolve(alias, auto_fetch=auto_fetch)
@@ -441,23 +649,105 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
         regions.append(out)
     additive = sum(1 for r in regions if r.get("Enabled", True) and not r.get("MasterFilter", False) and r["Kind"] not in (8, 9))
 
+    # song-level playback V3 data (key, chords and meter changes are metadata: they never change the sound)
+    def needs_v3(what):
+        if version < 3:
+            raise SpecError(f"{what} needs playbackVersion 3 (this song is V{version})")
+    extra = {}
+    for key in ("swing", "swingGrid", "targetLufs", "variationSeed"):
+        if key in spec:
+            extra[key] = float(spec[key]) if key != "variationSeed" else int(spec[key])
+    if spec.get("key"):
+        extra["key"] = str(spec["key"])
+    if spec.get("keys"):
+        extra["keys"] = [{"beat": _bar_beat(k, meter, sections, f"keys[{i}]"), "key": str(k["key"])} for i, k in enumerate(spec["keys"])]
+    if spec.get("chords"):
+        extra["chords"] = [{"beat": _bar_beat(c, meter, sections, f"chords[{i}]"), "chord": str(c["chord"])} for i, c in enumerate(spec["chords"])]
+    if spec.get("meterChanges"):
+        extra["meter"] = [dict({"beat": _bar_beat(m, meter, sections, f"meterChanges[{i}]"), "numerator": int(m["numerator"]),
+                                "denominator": int(m["denominator"])}, **({"grouping": m["grouping"]} if m.get("grouping") else {}))
+                          for i, m in enumerate(spec["meterChanges"])]
+    master = _mixer(spec.get("master"), "master") or {}
+    if "targetLufs" in spec:
+        needs_v3("targetLufs")
+        if not master.get("Limiter"):
+            master["Limiter"] = True
+            warnings.append("targetLufs: turned on the master Limiter (the renderer reaches the target with its input gain)")
+    if spec.get("masterAutomation"):
+        needs_v3("masterAutomation")
+        extra["masterAutomation"] = _lanes(spec["masterAutomation"], "masterAutomation", meter, sections, master=True)
+    if spec.get("masterImpulse"):
+        needs_v3("masterImpulse")
+        extra["masterImpulse"] = _file(spec["masterImpulse"], spec_dir, "masterImpulse")
+        master.setdefault("CabinetImpulseMix", 1)
+    buses = []
+    for name, b in (spec.get("buses") or {}).items():
+        needs_v3(f"bus '{name}'")
+        b = _plain(b, f"bus '{name}'", {"effects", "output", "pan", "automation", "impulse"})
+        bus = {"name": name, "effects": _mixer(b.get("effects"), f"bus '{name}'.effects") or {}}
+        if b.get("output"):
+            bus["output"] = b["output"]
+        if "pan" in b:
+            bus["pan"] = float(b["pan"])
+        if b.get("automation"):
+            bus["automation"] = _lanes(b["automation"], f"bus '{name}'.automation", meter, sections, master=True)
+        if b.get("impulse"):
+            bus["impulse"] = _file(b["impulse"], spec_dir, f"bus '{name}'.impulse")
+            bus["effects"].setdefault("CabinetImpulseMix", 1)
+        buses.append(bus)
+    bus_names = {b["name"] for b in buses}
+    for b in buses:
+        if b.get("output") and b["output"] not in bus_names:
+            raise SpecError(f"bus '{b['name']}': output '{b['output']}' is not a bus ({', '.join(sorted(bus_names))})")
+    for where, fields in [("master", master)] + [(f"bus '{b['name']}'", b["effects"]) for b in buses] + \
+            [(f"track '{t['name']}'.effects", t.get("effects") or {}) for t in tracks.values()]:
+        for group, needed in ((MIXER_V2, 2), (MIXER_V3, 3)):
+            used = sorted(set(fields) & group)
+            if used and version < needed:
+                warnings.append(f"{where}: {', '.join(used)} need playbackVersion {needed}; V{version} ignores them")
+
     # parts, within the engine budget
     budget = (part_budget or MAX_PARTS) - additive
+
+    def track_version(t):
+        return int(t.get("playbackVersion") or version)
+
+    def kind(t):
+        if t["entry"].get("engineSynth"):
+            return "synth"
+        if t["entry"].get("audioOnly"):
+            return "audio"
+        if track_version(t) >= 3 and t.get("zones", True) and version >= 3:
+            return "zones"                   # V3 multi-zone sampler: the whole track is one engine part
+        return "split"
+
+    for t in tracks.values():
+        used = sorted(set(t) & V3_TRACK_KEYS)
+        if used and (version < 3 or track_version(t) < 3):
+            raise SpecError(f"track '{t['name']}': {', '.join(used)} need playbackVersion 3")
+        if kind(t) in ("synth", "audio") and (version < 3 or track_version(t) < 3):
+            raise SpecError(f"track '{t['name']}': the built-in synth and audio-only tracks need playbackVersion 3")
+
+    def groups_of(name, splits, warn):
+        t = tracks[name]
+        if kind(t) in ("synth", "audio"):
+            return [(None, t["notes"])]
+        groups = _split(name, t, t["entry"], t["notes"], 10 ** 6 if kind(t) == "zones" else splits, warn)
+        return [(groups, [n for _, notes in groups for n in notes])] if kind(t) == "zones" else groups
+
     plans = {}
     for t in tracks.values():
-        if t.get("mute") or not t["notes"]:
+        if t.get("mute") or (not t["notes"] and not t.get("audio")):
             continue
-        splits = int(t.get("splits", 8))
-        plans[t["name"]] = [splits, None]
+        plans[t["name"]] = [int(t.get("splits", 8)), None]
     while True:
         total = 0
         for name, plan in plans.items():
-            t = tracks[name]
-            plan[1] = _split(name, t, t["entry"], t["notes"], plan[0], [])
+            plan[1] = groups_of(name, plan[0], [])
             total += len(plan[1])
         if total <= budget:
             break
-        reducible = [(len(p[1]), n) for n, p in plans.items() if not tracks[n]["drums"] and len(p[1]) > 1]
+        reducible = [(len(p[1]), n) for n, p in plans.items() if kind(tracks[n]) == "split" and not tracks[n]["drums"] and len(p[1]) > 1]
         if not reducible:
             raise SpecError(f"the song needs {total} engine parts but the limit is {budget} (32 minus additive noise regions). "
                             "Use fewer drum sounds or tracks, or merge tracks.")
@@ -466,26 +756,51 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
     parts, part_meta = [], []
     for name, (splits, _) in plans.items():
         t = tracks[name]
-        groups = _split(name, t, t["entry"], t["notes"], splits, warnings)
+        groups = groups_of(name, splits, warnings)
         entry = t["entry"]
-        for region, notes in groups:
-            label = name if len(groups) == 1 else f"{name}-{note_name(region['key']) if not t['drums'] else _drum_label(region['key'])}"
-            base_gain = float(t.get("gain", .5))
-            if not 0 <= base_gain <= 1:
-                raise SpecError(f"track '{name}': gain must be 0-1")
-            gain = base_gain * 10 ** (float(region.get("volume", 0)) / 20)
+        base_gain = float(t.get("gain", .5))
+        if not 0 <= base_gain <= 1:
+            raise SpecError(f"track '{name}': gain must be 0-1")
+        expression = _expression(t["expression"], name, meter, sections, t["notes"]) if t.get("expression") else []
+        clips = _clips(t["audio"], name, spec_dir, meter, sections) if t.get("audio") else []
+        for index, (region, notes) in enumerate(groups):
+            k = kind(t)
             boost = 0.0
-            if gain > 1:                     # quiet sample (SFZ volume > 0): the rest goes to the track's output stage (V2+)
-                boost = 20 * math.log10(gain)
-                gain = 1.0
-                if (t.get("playbackVersion") or version) < 2:
-                    warnings.append(f"part '{label}': needs +{boost:.1f} dB but playback V1 has no track output stage; clamped")
-                    boost = 0.0
-            part = {"name": label, "sample": region["sample"], "layer": t["layer"], "root": int(region["key"]),
-                    "gain": round(gain, 4), "pan": float(t.get("pan", 0)),
-                    "attack": float(t.get("attack", entry.get("attack", .005))),
-                    "release": float(t.get("release", min(float(entry.get("release", .3)), 8.0))),
-                    "stem": name, "notes": [x for n in notes for x in n]}
+            if k == "split":
+                label = name if len(groups) == 1 else f"{name}-{note_name(region['key']) if not t['drums'] else _drum_label(region['key'])}"
+                gain = base_gain * 10 ** (float(region.get("volume", 0)) / 20)
+                if gain > 1:                 # quiet sample (SFZ volume > 0): the rest goes to the track's output stage (V2+)
+                    boost = 20 * math.log10(gain)
+                    gain = 1.0
+                    if track_version(t) < 2:
+                        warnings.append(f"part '{label}': needs +{boost:.1f} dB but playback V1 has no track output stage; clamped")
+                        boost = 0.0
+                part = {"name": label, "sample": region["sample"], "root": int(region["key"])}
+                sample = region["sample"]
+            elif k == "zones":
+                label, gain = name, base_gain
+                zones = [{"sample": r["sample"], "root": int(r["key"]), "low": int(r["lo"]), "high": int(r["hi"]),
+                          "gainDb": round(max(-24.0, min(24.0, float(r.get("volume", 0)))), 3)} for r, _ in region]
+                part = {"name": label, "root": zones[0]["root"], "zones": zones}
+                sample = zones[0]["sample"]
+                notes = sorted(notes)
+            elif k == "synth":
+                label, gain = name, base_gain
+                part = {"name": label, "root": 60}
+                part.update(entry["engineSynth"])
+                if entry.get("wavetable"):
+                    part["wavetable"] = _file(entry["wavetable"], spec_dir, f"instrument of track '{name}'.wavetable")
+                sample = ""
+            else:                            # audio only: the recordings play through the part's first clip
+                if not clips:
+                    raise SpecError(f"track '{name}': an audio-only track needs 'audio' clips")
+                label, gain = name, base_gain
+                part = {"name": label, "root": 60, "sample": clips[0]["sample"]}
+                sample = clips[0]["sample"]
+            part.update({"layer": t["layer"], "gain": round(gain, 4), "pan": float(t.get("pan", 0)),
+                         "attack": float(t.get("attack", entry.get("attack", .005 if k != "synth" else .008))),
+                         "release": float(t.get("release", min(float(entry.get("release", .3 if k != "synth" else .12)), 8.0))),
+                         "stem": name, "notes": [x for n in notes for x in n]})
             if t.get("playbackVersion"):
                 part["playbackVersion"] = int(t["playbackVersion"])
             if t.get("glide"):
@@ -497,18 +812,27 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
             if boost > 0:
                 effects = dict(effects or {})
                 effects["OutputDb"] = round(min(30.0, float(effects.get("OutputDb", 0)) + boost), 2)
+            if t.get("impulse"):
+                effects = dict(effects or {})
+                effects.setdefault("CabinetImpulseMix", 1)
+                part["impulse"] = _file(t["impulse"], spec_dir, f"track '{name}'.impulse")
             if effects:
                 part["trackEffects"] = True
                 part["effects"] = effects
+            _track_v3(part, t, name, meter, sections, bus_names, expression, notes, clips if index == 0 and k != "audio" else
+                      clips if k == "audio" else [])
             parts.append(part)
-            part_meta.append({"name": label, "track": name, "sample": region["sample"], "instrument": entry["id"]})
+            part_meta.append({"name": label, "track": name, "sample": sample, "instrument": entry["id"]})
     if not parts:
         raise SpecError("no notes to play: add sections with 'play' (or top-level 'notes')")
 
     song = {"name": title, "bpm": bpm, "beatsPerBar": meter, "loopBeats": loop, "playbackVersion": version,
             "source": spec.get("source", "notewright plugin"), "tempo": tempo,
-            "master": _mixer(spec.get("master"), "master") or {}, "regions": regions,
+            "master": master, "regions": regions,
             "sections": [{"name": s["name"], "beat": s["beat"]} for s in sections], "parts": parts}
+    song.update(extra)
+    if buses:
+        song["buses"] = buses
     credits = {}
     for t in tracks.values():
         e = t["entry"]
