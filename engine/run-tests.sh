@@ -12,7 +12,8 @@ trap 'rm -rf "$out"' EXIT
 # The Mono reference framework has no Array.Fill (.NET Standard 2.1); tests get a shim on every runtime.
 mkdir -p "$out/tests"
 for f in "$here"/Tests/*.cs; do sed 's/Array\.Fill(/ArrayShim.Fill(/g' "$f" > "$out/tests/$(basename "$f")"; done
-sources=("$here/Stubs/UnityStubs.cs" "$here/Tests/Harness/NUnitShim.cs" "$here/Tests/Harness/Runner.cs" "$here"/Runtime/*.cs "$out"/tests/*.cs)
+mapfile -t engine < <(find "$here/Runtime" -name "*.cs" | sort)
+sources=("$here/Stubs/UnityStubs.cs" "$here/Tests/Harness/NUnitShim.cs" "$here/Tests/Harness/Runner.cs" "${engine[@]}" "$out"/tests/*.cs)
 flags=(-nologo -langversion:9 -warnaserror- -nowarn:0414,0169,0649,0162 -noconfig -nostdlib)
 case "$runtime" in
   mono)

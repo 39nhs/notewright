@@ -11,8 +11,8 @@ namespace Graze.Presentation.Audio
     /// part of a version.
     /// </summary>
     /// <remarks>
-    /// Released versions are frozen: their fingerprints in Tests/Editor/MusicPlaybackFingerprints.cs must keep passing.
-    /// To change the sound, add a version (V3 = 3, set Latest = V3), branch on it in the engine's version dispatch
+    /// Released versions are frozen: their fingerprints in engine/Tests/MusicPlaybackFingerprints.cs must keep passing.
+    /// To change the sound, add a version (next: V4 = 4, set Latest = V4), branch on it in the engine's version dispatch
     /// (AdaptiveMusicEngine.Playback.cs) or pass it into the compile step you change, record its fingerprints, and
     /// describe it in <see cref="Describe"/>. See engine/playback-versions.md.
     /// </remarks>
@@ -22,9 +22,11 @@ namespace Graze.Presentation.Audio
         public const int V1 = 1;
         /// <summary>V1 sound with up to 1024 simultaneous voices instead of 128, plus per-track legato glide (<see cref="MusicPart.GlideSeconds"/>) and drive (<see cref="MusicPart.DriveDb"/>, <see cref="MusicMixerSettings.Drive"/>).</summary>
         public const int V2 = 2;
+        /// <summary>V2 sound plus automation, routing, the built-in synth, sampler and expression features (engine/playback-versions.md). Without them it renders exactly like V2.</summary>
+        public const int V3 = 3;
         public const int Oldest = V1;
         /// <summary>Version new songs are created with.</summary>
-        public const int Latest = V2;
+        public const int Latest = V3;
         /// <summary>
         /// Version for songs without a recorded version (assets, song.json and generated code from before versioning; serialized 0):
         /// the playback module that was current when versioning was introduced. It is pinned, not <see cref="Latest"/>,
@@ -54,12 +56,13 @@ namespace Graze.Presentation.Audio
         /// </summary>
         public static int VoiceLimit(int version) => version == V1 ? 128 : AdaptiveMusicEngine.VoiceCapacity;
 
-        /// <summary>One-line description shown in the Music Arranger.</summary>
+        /// <summary>One-line description of a version.</summary>
         public static string Describe(int version)
         {
             switch (version)
             {
                 case V1: return "V1 — 0.1.0: linear-interpolated samples with 5 ms end taper, linear attack/release, linear balance pan, tanh limiter; 128 voices.";
+                case V3: return "V3 — V2 sound plus automation, buses/sends/sidechain, built-in synth, multi-zone sampler, loops, stretch, expression, Color stage, modulators and limiter. Without them identical to V2.";
                 case V2: return "V2 — V1 sound with up to 1024 simultaneous voices (V1 drops notes beyond 128), track glide (a held note slides into the next), drive (track and master waveshapers) and per-track effect chains.";
                 default: return "V" + version + " — unknown to this package.";
             }

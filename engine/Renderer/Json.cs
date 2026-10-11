@@ -174,6 +174,15 @@ namespace GrazePlugin
             if (type == typeof(float)) return System.Convert.ToSingle(value, CultureInfo.InvariantCulture);
             if (type == typeof(double)) return System.Convert.ToDouble(value, CultureInfo.InvariantCulture);
             if (type == typeof(int)) return System.Convert.ToInt32(value, CultureInfo.InvariantCulture);
+            // Nested settings (MusicColorSettings, EQ bands, mod matrix slots…), as JsonUtility reads them; Unity objects stay unsupported.
+            if (type.IsArray)
+            {
+                var items = List(value, where); var array = Array.CreateInstance(type.GetElementType(), items.Count);
+                for (int i = 0; i < items.Count; i++) array.SetValue(Convert(items[i], type.GetElementType(), where + "[" + i + "]"), i);
+                return array;
+            }
+            if ((type.IsClass || (type.IsValueType && !type.IsPrimitive)) && type.IsSerializable && !typeof(UnityEngine.Object).IsAssignableFrom(type))
+                return Fill(Activator.CreateInstance(type), Obj(value, where), where);
             throw new FormatException(where + ": unsupported field type " + type.Name);
         }
     }

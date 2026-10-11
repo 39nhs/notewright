@@ -15,7 +15,7 @@ def home() -> Path:
 
 
 def engine_sources():
-    runtime = sorted((ENGINE_DIR / "Runtime").glob("*.cs"))
+    runtime = sorted((ENGINE_DIR / "Runtime").rglob("*.cs"))
     if not runtime:
         raise FileNotFoundError(f"engine sources not found under {ENGINE_DIR / 'Runtime'}")
     return runtime + [ENGINE_DIR / "Stubs" / "UnityStubs.cs"] + sorted((ENGINE_DIR / "Renderer").glob("*.cs"))

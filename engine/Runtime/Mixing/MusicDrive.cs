@@ -50,6 +50,8 @@ namespace Graze.Presentation.Audio
         readonly int rate;
         double coefHz = -1, b0, b1, b2, a1, a2;
         public MusicMasterDrive(int sampleRate) { rate = sampleRate; }
+        /// <summary>Playback V3 lanes (DriveDb as linear gain, DriveMix): the value to use instead of the snapshot's, negative = the snapshot's.</summary>
+        public double GainOverride = -1, MixOverride = -1;
 
         public void Process(ref double left, ref double right, MusicMixerSnapshot s)
         {
@@ -76,14 +78,15 @@ namespace Graze.Presentation.Audio
         double Channel(double x, MusicMixerSnapshot s, int ch)
         {
             double high = s.DriveKeepBassHz > 0 ? Biquad(Biquad(x, ch * 8), ch * 8 + 4) : x, low = x - high;
-            double wet = MusicDrive.Shape(s.DriveMode, high * s.DriveGain);
+            double wet = MusicDrive.Shape(s.DriveMode, high * (GainOverride >= 0 ? GainOverride : s.DriveGain));
             if (s.DriveToneHz > 0)
             {
                 double a = 1 - Math.Exp(-2 * Math.PI * Math.Min(s.DriveToneHz, rate * .45) / rate);
                 tone[ch] += a * (wet - tone[ch]); wet = tone[ch];
             }
             wet = low + wet * s.DriveTrim;
-            return x * (1 - s.DriveMix) + wet * s.DriveMix;
+            double mix = MixOverride >= 0 ? MixOverride : s.DriveMix;
+            return x * (1 - mix) + wet * mix;
         }
     }
 }

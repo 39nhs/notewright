@@ -12,7 +12,7 @@ namespace Graze.Tests
     internal static class MusicPlaybackScenarios
     {
         public const int SampleRate = 8000, Frames = 64000;
-        public static readonly string[] Names = { "Oscillators", "Samples", "Master", "Dense", "Glide", "Drive", "TrackFx" };
+        public static readonly string[] Names = { "Oscillators", "Samples", "Master", "Dense", "Glide", "Drive", "TrackFx", "Automation", "AutomationFx", "Routing", "Sidechain", "TimeStretch", "RoutingAutomation", "Synth", "Expression", "SyncedEcho", "Limiter", "Zones", "SampleLoop", "Color", "Modulators" };
 
         public sealed class Song : IDisposable
         {
@@ -38,6 +38,28 @@ namespace Graze.Tests
                 case "Glide": return Glide();
                 case "Drive": return new Song { Definition = Drive() };
                 case "TrackFx": return new Song { Definition = TrackFx() };
+                case "Automation": return new Song { Definition = Automation() };
+                case "AutomationFx": return new Song { Definition = AutomationFx() };
+                case "Routing": return new Song { Definition = Routing() };
+                case "Sidechain": return new Song { Definition = Sidechain() };
+                case "TimeStretch": return TimeStretch();
+                case "RoutingAutomation": return new Song { Definition = RoutingAutomation() };
+                case "Synth": return new Song { Definition = Synth() };
+                case "Expression": return new Song { Definition = Expression() };
+                case "SyncedEcho": return new Song { Definition = SyncedEcho() };
+                case "Limiter": return new Song { Definition = Limiter() };
+                case "Modulators": return new Song { Definition = Modulators() };
+                case "Color": return new Song { Definition = Color() };
+                case "Zones": return Zones();
+                case "SampleLoop": return SampleLoop();
+                case "NoteExpression": return NoteExpression();
+                case "PerformanceFx": return new Song { Definition = PerformanceFx() };
+                case "Organ": return new Song { Definition = Organ() };
+                case "OrganPercussion": return new Song { Definition = OrganPercussion() };
+                case "FmWavetable": return new Song { Definition = FmWavetable() };
+                case "SampleShape": return SampleShape();
+                case "Variation": return Variation();
+                case "AudioRegions": return AudioRegions();
                 default: throw new ArgumentException(name);
             }
         }
@@ -55,6 +77,188 @@ namespace Graze.Tests
             }
             if (engine.DroppedNotes > 0 && !allowDrops) throw new InvalidOperationException("Scenario exceeds the voice limit.");
             return pcm;
+        }
+
+        /// <summary>Oscillators (tempo ramp, rhythm deck) plus every automation shape: V1/V2 must sound like Oscillators, V3 follows the lanes.</summary>
+        static MusicCueDefinition Automation()
+        {
+            var song = Oscillators("Automation");
+            song.Parts[0].Automation = new[] { new MusicAutomationLane(MusicAutomationTarget.VolumeDb,
+                new MusicAutomationPoint(0, -30), new MusicAutomationPoint(2, 0, MusicAutomationCurve.Step), new MusicAutomationPoint(4, -6, MusicAutomationCurve.Smooth),
+                new MusicAutomationPoint(7, 3)) };
+            song.Parts[2].Automation = new[] { new MusicAutomationLane(MusicAutomationTarget.Pan, new MusicAutomationPoint(0, -1), new MusicAutomationPoint(8, 1)) };
+            song.Parts[3].Automation = new[] { new MusicAutomationLane(MusicAutomationTarget.VolumeDb,
+                new MusicAutomationPoint(0, 0, MusicAutomationCurve.Step), new MusicAutomationPoint(3, -80, MusicAutomationCurve.Step), new MusicAutomationPoint(3.5, 0)) };
+            song.MasterAutomation = new[] { new MusicAutomationLane(MusicAutomationTarget.VolumeDb, new MusicAutomationPoint(6, 0), new MusicAutomationPoint(8, -24)) };
+            return song;
+        }
+
+        /// <summary>TrackFx plus effect lanes (track echo/filters, master filters): V1/V2 must sound like TrackFx, V3 follows the lanes.</summary>
+        static MusicCueDefinition AutomationFx()
+        {
+            var song = TrackFx();
+            song.name = "AutomationFx";
+            song.Parts[0].Automation = new[] {
+                new MusicAutomationLane(MusicAutomationTarget.EchoWet, new MusicAutomationPoint(0, 0), new MusicAutomationPoint(6, .9f)),
+                new MusicAutomationLane(MusicAutomationTarget.HighPassHz, new MusicAutomationPoint(0, 300), new MusicAutomationPoint(4, 2000, MusicAutomationCurve.Step), new MusicAutomationPoint(6, 0)) };
+            song.Parts[1].Automation = new[] { new MusicAutomationLane(MusicAutomationTarget.LowPassHz,
+                new MusicAutomationPoint(0, 900, MusicAutomationCurve.Smooth), new MusicAutomationPoint(3, 150), new MusicAutomationPoint(8, 4000)) };
+            song.MasterAutomation = new[] {
+                new MusicAutomationLane(MusicAutomationTarget.LowPassHz, new MusicAutomationPoint(0, 200), new MusicAutomationPoint(8, 18000)),
+                new MusicAutomationLane(MusicAutomationTarget.HighPassHz, new MusicAutomationPoint(4, 0), new MusicAutomationPoint(8, 400)) };
+            return song;
+        }
+
+        /// <summary>Oscillators through a shared reverb bus and a compressed group bus: V1/V2 must sound like Oscillators.</summary>
+        static MusicCueDefinition Routing()
+        {
+            var song = Oscillators("Routing");
+            song.Buses = new[] {
+                new MusicBusDefinition { Name = "Verb", Output = "Glue", Effects = new MusicMixerSettings { Reverb = true, ReverbMix = 1, ReverbSize = .8f, HighPassHz = 200, OutputDb = -4 } },
+                new MusicBusDefinition { Name = "Glue", Effects = new MusicMixerSettings { Compressor = true, ThresholdDb = -24, Ratio = 4, LowPassHz = 9000 } } };
+            song.Parts[0].Sends = new[] { new MusicSendDefinition("Verb", -6) };
+            song.Parts[2].Output = "Glue"; song.Parts[2].Sends = new[] { new MusicSendDefinition("Verb", -3) };
+            song.Parts[3].Output = "Glue";
+            return song;
+        }
+
+        /// <summary>Routing with bus volume/cutoff and send level lanes. V1/V2 ignore all routing and automation.</summary>
+        static MusicCueDefinition RoutingAutomation()
+        {
+            var song = Routing(); song.name = "RoutingAutomation";
+            song.Buses[0].Automation = new[] {
+                new MusicAutomationLane(MusicAutomationTarget.VolumeDb, new MusicAutomationPoint(0, -12), new MusicAutomationPoint(8, 0)),
+                new MusicAutomationLane(MusicAutomationTarget.LowPassHz, new MusicAutomationPoint(0, 180), new MusicAutomationPoint(8, 7000)) };
+            for (int i = 0; i < song.Parts.Length; i++)
+                for (int s = 0; s < song.Parts[i].Sends.Length; s++)
+                    song.Parts[i].Sends[s].LevelAutomation = new[] { new MusicAutomationLane(MusicAutomationTarget.VolumeDb,
+                        new MusicAutomationPoint(0, -80, MusicAutomationCurve.Step), new MusicAutomationPoint(2, -9), new MusicAutomationPoint(6, 0)) };
+            return song;
+        }
+
+        /// <summary>Oscillators with bass and pad through a bus whose compressor ducks under the kick: V1/V2 must sound like Oscillators.</summary>
+        static MusicCueDefinition Sidechain()
+        {
+            var song = Oscillators("Sidechain");
+            song.Buses = new[] { new MusicBusDefinition { Name = "Duck", Effects = new MusicMixerSettings { Compressor = true, ThresholdDb = -30, Ratio = 10, AttackMs = 2, ReleaseMs = 120, SidechainTrack = "Kick" } } };
+            song.Parts[1].Output = "Duck"; song.Parts[2].Output = "Duck";
+            return song;
+        }
+
+        /// <summary>Samples with both tracks time-stretched as if recorded at 80 BPM (the song runs at 110): V1/V2 must sound like Samples.</summary>
+        static Song TimeStretch()
+        {
+            var song = Samples();
+            song.Definition.name = "TimeStretch";
+            song.Definition.Parts[0].StretchBpm = 80; song.Definition.Parts[0].StretchGrainMs = 30;
+            song.Definition.Parts[1].StretchBpm = 80;
+            return song;
+        }
+
+        /// <summary>Oscillators with the built-in synth on the bell (saw lead, vibrato), bass (acid filter envelope) and pad (unison):
+        /// V1/V2 must sound like Oscillators.</summary>
+        /// <summary>Synth with a drawbar organ lead (888000000) and the pad on "Gospel organ", through a master rotary that switches slow → fast at beat 4. V1/V2 equal Synth.</summary>
+        static MusicCueDefinition Organ()
+        {
+            var song = Synth();
+            song.name = "Organ";
+            song.Parts[0].Synth.Osc1Wave = MusicSynthWave.Organ; song.Parts[0].Synth.Drawbars = "888000000";
+            song.Parts[2].Synth = MusicSynthPresets.Create("Gospel organ");
+            song.Mixer.Color = new MusicColorSettings { Rotary = true, RotaryDepth = .8f };
+            song.MasterAutomation = new[] { new MusicAutomationLane(MusicAutomationTarget.RotarySpeed, new MusicAutomationPoint(0, 0, MusicAutomationCurve.Step), new MusicAutomationPoint(4, 1)) };
+            return song;
+        }
+
+        /// <summary>Synth with FM (e-piano lead, bass) and wavetable (pad with an LFO sweeping the table) voices. V1/V2 equal Synth.</summary>
+        static MusicCueDefinition FmWavetable()
+        {
+            var song = Synth();
+            song.name = "FmWavetable";
+            song.Parts[0].Synth = MusicSynthPresets.Create("FM e-piano");
+            song.Parts[1].Synth = MusicSynthPresets.Create("FM bass");
+            song.Parts[2].Synth = MusicSynthPresets.Create("Wavetable pad");
+            return song;
+        }
+
+        /// <summary>Synth with the lead on "Jazz organ perc" (third percussion, key click). V1/V2 equal Synth.</summary>
+        static MusicCueDefinition OrganPercussion()
+        {
+            var song = Synth();
+            song.name = "OrganPercussion";
+            song.Parts[0].Synth = MusicSynthPresets.Create("Jazz organ perc");
+            return song;
+        }
+
+        static MusicCueDefinition Synth()
+        {
+            var song = Oscillators("Synth");
+            song.Parts[0].Synth = MusicSynthPresets.Create("Saw lead");
+            song.Parts[1].Synth = MusicSynthPresets.Create("Acid bass");
+            song.Parts[2].Synth = MusicSynthPresets.Create("Warm pad");
+            return song;
+        }
+
+        /// <summary>
+        /// Synth plus modulators: the lead's mod matrix (LFO 2 → pulse width and pitch, velocity → cutoff), a tempo-synced LFO on the lead's pan,
+        /// and the pad ducking to the bass with an envelope follower. V1/V2 must sound like Oscillators.
+        /// </summary>
+        static MusicCueDefinition Modulators()
+        {
+            var song = Synth();
+            song.name = "Modulators";
+            var lead = song.Parts[0].Synth; lead.Osc1Wave = MusicSynthWave.Square; lead.Lfo2SyncBeats = 1; lead.Lfo2Wave = MusicLfoWave.Triangle;
+            lead.ModMatrix = new[] { new MusicSynthModSlot(MusicSynthModSource.Lfo2, MusicSynthModDestination.PulseWidth, .3f), new MusicSynthModSlot(MusicSynthModSource.Lfo2, MusicSynthModDestination.PitchCents, 15),
+                new MusicSynthModSlot(MusicSynthModSource.Velocity, MusicSynthModDestination.CutoffOctaves, 1.5f) };
+            song.Parts[0].Modulators = new[] { MusicModulator.Lfo(MusicAutomationTarget.Pan, .6f, syncBeats: 2) };
+            song.Parts[2].Modulators = new[] { MusicModulator.Follower(MusicAutomationTarget.VolumeDb, -18, "Bass", 5, 180) };
+            return song;
+        }
+
+        /// <summary>Synth plus expression lanes: the lead bends up two semitones and back, the bass bends down an octave on beat 6,
+        /// the lead's vibrato depth follows a modulation lane and the bass gets darker then brighter. V1/V2 must sound like Oscillators.</summary>
+        static MusicCueDefinition Expression()
+        {
+            var song = Synth();
+            song.name = "Expression";
+            MusicAutomationLane L(MusicAutomationTarget t, params float[] beatValue)
+            {
+                var points = new MusicAutomationPoint[beatValue.Length / 2];
+                for (int i = 0; i < points.Length; i++) points[i] = new MusicAutomationPoint(beatValue[i * 2], beatValue[i * 2 + 1]);
+                return new MusicAutomationLane(t, points);
+            }
+            song.Parts[0].Automation = new[] { L(MusicAutomationTarget.PitchSemitones, 0, 0, 1, 2, 2.5f, 0), L(MusicAutomationTarget.Modulation, 0, 0, 6, 1) };
+            song.Parts[1].Automation = new[] { L(MusicAutomationTarget.PitchSemitones, 0, 0, 5.9f, 0, 6, -12), L(MusicAutomationTarget.Brightness, 0, -2, 8, 2) };
+            return song;
+        }
+
+        /// <summary>Oscillators (tempo ramp 132 → 150) with a dotted-eighth master echo and an eighth-note echo on the bass track, both in
+        /// beats with fallback seconds: V1 uses the master echo seconds only, V2 adds the track echo in seconds, V3 follows the tempo.</summary>
+        static MusicCueDefinition SyncedEcho()
+        {
+            var song = Oscillators("SyncedEcho");
+            song.Mixer.EchoWet = .35f; song.Mixer.EchoFeedback = .4f; song.Mixer.EchoSeconds = .2f; song.Mixer.EchoBeats = .75f;
+            song.Parts[1].TrackEffects = true;
+            song.Parts[1].Effects = new MusicMixerSettings { EchoWet = .3f, EchoFeedback = .3f, EchoSeconds = .15f, EchoBeats = .5f };
+            return song;
+        }
+
+        /// <summary>Oscillators pushed 12 dB into the output with the master limiter on (ceiling -1 dBTP): V1/V2 saturate the soft limiter, V3 limits.</summary>
+        /// <summary>Oscillators with the color stage: master parametric EQ, phaser and width 0.6; track 2 with track effects running a flanger and tempo-synced auto-pan. V1/V2 equal Oscillators.</summary>
+        static MusicCueDefinition Color()
+        {
+            var song = Oscillators("Color");
+            song.Mixer.Color = new MusicColorSettings { EqBands = new[] { new MusicEqBand(MusicEqBandType.LowCut, 120), new MusicEqBand(MusicEqBandType.Peak, 2500, 4, 1.4f) },
+                Phaser = true, PhaserRateHz = .7f, PhaserMix = .4f, StereoWidth = .6f };
+            song.Parts[1].TrackEffects = true;
+            song.Parts[1].Effects = new MusicMixerSettings { Color = new MusicColorSettings { Flanger = true, FlangerMix = .5f, Tremolo = true, TremoloPan = true, TremoloBeats = 1, TremoloDepth = .7f } };
+            return song;
+        }
+
+        static MusicCueDefinition Limiter()
+        {
+            var song = Oscillators("Limiter");
+            song.Mixer.OutputDb = 12; song.Mixer.Limiter = true; song.Mixer.LimiterCeilingDb = -1; song.Mixer.LimiterReleaseMs = 120;
+            return song;
         }
 
         static MusicCueDefinition Oscillators(string name)
@@ -77,6 +281,105 @@ namespace Graze.Tests
                     new MusicNote(0, .5, 36), new MusicNote(1, .5, 36, .7f), new MusicNote(2, .5, 36), new MusicNote(3, .5, 36, .7f),
                     new MusicNote(4, .5, 36), new MusicNote(5, .5, 36, .7f), new MusicNote(6, .5, 36), new MusicNote(7, .5, 36, .7f) } },
             };
+            return song;
+        }
+
+        /// <summary>
+        /// Samples with a multi-zone Pluck (V3+; V1/V2 ignore Zones and equal Samples): the original pluck up to key 62, a brighter
+        /// square pluck recorded at E5 above it with a louder velocity layer from .85, so notes cross zones, layers and the nearest-zone rule.
+        /// </summary>
+        static Song Zones()
+        {
+            var song = Samples();
+            var bright = AudioClip.Create("Bright", 4410, 1, 11025, false);
+            var brightPcm = new float[4410];
+            for (int i = 0; i < brightPcm.Length; i++)
+            {
+                double t = i / 11025.0;
+                brightPcm[i] = (float)(.6 * Math.Sign(Math.Sin(2 * Math.PI * 659.25 * t)) * Math.Exp(-t * 9));
+            }
+            bright.SetData(brightPcm, 0);
+            var loud = AudioClip.Create("BrightLoud", 4410, 1, 11025, false);
+            var loudPcm = new float[4410];
+            for (int i = 0; i < loudPcm.Length; i++) loudPcm[i] = (float)Math.Tanh(2 * brightPcm[i]);
+            loud.SetData(loudPcm, 0);
+            var pluck = song.Definition.Parts[0];
+            song.Definition.name = "Zones";
+            pluck.Zones = new[]
+            {
+                new MusicCueDefinition.SampleZone { Sample = pluck.Sample, RootKey = 57, LowKey = 40, HighKey = 62 },
+                new MusicCueDefinition.SampleZone { Sample = bright, RootKey = 76, LowKey = 63, HighKey = 127, GainDb = -4 },
+                new MusicCueDefinition.SampleZone { Sample = loud, RootKey = 76, LowKey = 63, HighKey = 127, MinVelocity = .85f, GainDb = -6 },
+            };
+            song.Clips = new[] { song.Clips[0], song.Clips[1], bright, loud };
+            return song;
+        }
+
+        /// <summary>Samples with a sustain loop on the 0.4 s organ (0.1–0.35 s, 20 ms crossfade): V3 sustains its long notes; V1/V2 equal Samples.</summary>
+        static Song SampleLoop()
+        {
+            var song = Samples();
+            song.Definition.name = "SampleLoop";
+            var organ = song.Definition.Parts[1];
+            organ.LoopStartSeconds = .1f; organ.LoopEndSeconds = .35f; organ.LoopCrossfadeSeconds = .02f;
+            return song;
+        }
+
+        /// <summary>
+        /// Samples with per-note expression (bend up, scoop, dive, vibrato) and articulations (key switches at beats 3 and 7, a short quiet
+        /// articulation that starts 50 ms into the sample): V1/V2 equal Samples (expression ignored, switch notes removed).
+        /// </summary>
+        static Song NoteExpression()
+        {
+            var song = Samples();
+            song.Definition.name = "NoteExpression";
+            var pluck = song.Definition.Parts[0]; var organ = song.Definition.Parts[1];
+            pluck.Notes[1].BendTo = 2; pluck.Notes[1].BendStart = .1f; pluck.Notes[1].BendEnd = .4f;
+            pluck.Notes[3].Vibrato = .5f;
+            pluck.Articulations = new[] { new MusicArticulation(1, "Short", .05f, -3, .5f) };
+            pluck.KeySwitches = new[] { new MusicKeySwitch(24, 1), new MusicKeySwitch(25, 0) };
+            var notes = new MusicNote[pluck.Notes.Length + 2]; pluck.Notes.CopyTo(notes, 0);
+            notes[notes.Length - 2] = new MusicNote(3, .1, 24); notes[notes.Length - 1] = new MusicNote(7, .1, 25); pluck.Notes = notes;
+            organ.Notes[0].BendFrom = -1; organ.Notes[0].BendEnd = .5f;
+            organ.Notes[3].Vibrato = .3f;
+            organ.Notes[4].BendTo = -5; organ.Notes[4].BendStart = 1; organ.Notes[4].BendEnd = 3;
+            return song;
+        }
+
+        /// <summary>Samples with note variation (skip chances, every-other-pass notes, seed 11). V1/V2 equal Samples.</summary>
+        static Song Variation()
+        {
+            var song = Samples();
+            song.Definition.name = "Variation"; song.Definition.VariationSeed = 11;
+            var pluck = song.Definition.Parts[0]; var organ = song.Definition.Parts[1];
+            pluck.Notes[1].SkipChance = .5f; pluck.Notes[2].SkipChance = .5f; pluck.Notes[4].SkipChance = .9f; pluck.Notes[6].RepeatEvery = 2; pluck.Notes[6].RepeatOffset = 1;
+            organ.Notes[3].SkipChance = .5f; organ.Notes[4].RepeatEvery = 2;
+            return song;
+        }
+
+        /// <summary>Samples with audio regions on the pluck track: offset + fades, transposed, tempo-warped and marker-warped pieces of its recording. V1/V2 equal Samples.</summary>
+        static Song AudioRegions()
+        {
+            var song = Samples();
+            song.Definition.name = "AudioRegions";
+            song.Definition.Parts[0].Regions = new[]
+            {
+                new MusicAudioRegion { StartBeat = .25, LengthBeats = 1.5, SourceStartSeconds = .05f, FadeInBeats = .25f, FadeOutBeats = .5f, GainDb = -3 },
+                new MusicAudioRegion { StartBeat = 2.5, LengthBeats = 1, Semitones = 7 },
+                new MusicAudioRegion { StartBeat = 4, LengthBeats = 2, Warp = MusicRegionWarp.Tempo, SourceBpm = 140, Semitones = -5 },
+                new MusicAudioRegion { StartBeat = 6, LengthBeats = 1.75, Warp = MusicRegionWarp.Markers, Markers = new[] { new MusicWarpMarker(0, 0), new MusicWarpMarker(1, .3f), new MusicWarpMarker(1.75, .45f) } },
+            };
+            return song;
+        }
+
+        /// <summary>Samples with shaped sample voices: the organ decays to 40 % through a resonant low-pass with an envelope, the pluck through a key-tracked high-pass. V1/V2 equal Samples.</summary>
+        static Song SampleShape()
+        {
+            var song = Samples();
+            song.Definition.name = "SampleShape";
+            song.Definition.Parts[1].SampleShape = new MusicSampleShapeSettings { DecaySeconds = .4f, Sustain = .4f, Filter = MusicSynthFilter.LowPass, CutoffHz = 600, Resonance = .5f,
+                EnvelopeOctaves = 3, FilterDecay = .3f, VelocityOctaves = 1 };
+            song.Definition.Parts[0].SampleShape = new MusicSampleShapeSettings { Filter = MusicSynthFilter.HighPass, CutoffHz = 300, KeyTracking = 1 };
             return song;
         }
 
@@ -184,6 +487,28 @@ namespace Graze.Tests
         /// Track effects (V2+; V1 ignores them): an echo whose tail rings past the last note, a crushed and filtered bass, a pad
         /// through a step gate, a compressed and driven kick, an untouched lead — and a master compressor on top of it all.
         /// </summary>
+        /// <summary>
+        /// TrackFx with performance lanes: bell stutter (ramping in, engaged from beat 0.5 to 2.5) and width, bass crush mix, pad gate depth, kick drive gain and mix,
+        /// master tape stop (beats 5–7, resuming at 7.5). V1/V2 equal TrackFx (lanes and Stutter ignored).
+        /// </summary>
+        static MusicCueDefinition PerformanceFx()
+        {
+            var song = TrackFx();
+            song.name = "PerformanceFx";
+            song.Parts[0].Effects.Stutter = true; song.Parts[0].Effects.StutterBeats = .25f;
+            song.Parts[0].Automation = new[] {
+                new MusicAutomationLane(MusicAutomationTarget.Stutter, new MusicAutomationPoint(0, 0), new MusicAutomationPoint(1, 1, MusicAutomationCurve.Step), new MusicAutomationPoint(2.5, 0)),
+                new MusicAutomationLane(MusicAutomationTarget.Width, new MusicAutomationPoint(0, 0), new MusicAutomationPoint(8, 2)) };
+            song.Parts[1].Automation = new[] { new MusicAutomationLane(MusicAutomationTarget.CrushMix, new MusicAutomationPoint(0, 0), new MusicAutomationPoint(8, 1)) };
+            song.Parts[2].Automation = new[] { new MusicAutomationLane(MusicAutomationTarget.GateDepth, new MusicAutomationPoint(0, 0), new MusicAutomationPoint(4, 1, MusicAutomationCurve.Step), new MusicAutomationPoint(6, .3f)) };
+            song.Parts[3].Automation = new[] {
+                new MusicAutomationLane(MusicAutomationTarget.DriveDb, new MusicAutomationPoint(0, 0), new MusicAutomationPoint(8, 36)),
+                new MusicAutomationLane(MusicAutomationTarget.DriveMix, new MusicAutomationPoint(0, 1), new MusicAutomationPoint(4, .3f)) };
+            song.MasterAutomation = new[] { new MusicAutomationLane(MusicAutomationTarget.Speed,
+                new MusicAutomationPoint(0, 1), new MusicAutomationPoint(5, 1), new MusicAutomationPoint(7, MusicAutomation.MinSpeed, MusicAutomationCurve.Step), new MusicAutomationPoint(7.5f, 1)) };
+            return song;
+        }
+
         static MusicCueDefinition TrackFx()
         {
             var song = ScriptableObject.CreateInstance<MusicCueDefinition>();
