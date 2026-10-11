@@ -4,7 +4,7 @@
   "bpm": 80,
   "meter": 3,
   "key": "D major",
-  "playbackVersion": 2,
+  "playbackVersion": 3,
 
   "instruments": {
     "violins": "vsco2:violin-ens-sus-vib",

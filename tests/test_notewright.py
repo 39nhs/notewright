@@ -103,7 +103,7 @@ class Catalog(unittest.TestCase):
 
 class Spec(unittest.TestCase):
     def test_compile(self):
-        song, meta = spec.compile(tiny_spec())
+        song, meta = spec.compile(tiny_spec(playbackVersion=2))
         self.assertEqual(song["loopBeats"], 8)
         self.assertEqual(song["playbackVersion"], 2)
         names = sorted(p["name"] for p in song["parts"])
@@ -115,6 +115,17 @@ class Spec(unittest.TestCase):
         kick = next(p for p in song["parts"] if p["name"] == "drums-kick")
         self.assertEqual(kick["root"], 36)
         self.assertEqual(len(kick["notes"]) // 4, 8)
+
+    def test_compile_v3_zones(self):
+        """Playback V3 (the default): every sampled track is one engine part with a zone per sample."""
+        song, meta = spec.compile(tiny_spec())
+        self.assertEqual(song["playbackVersion"], 3)
+        self.assertEqual(sorted(p["name"] for p in song["parts"]), ["drums", "lead"])
+        drums = next(p for p in song["parts"] if p["name"] == "drums")
+        self.assertEqual([(z["root"], z["low"], z["high"]) for z in drums["zones"]], [(36, 36, 36), (38, 38, 38)])
+        self.assertNotIn("sample", drums)
+        self.assertEqual(len(drums["notes"]) // 4, 12)                  # 8 kicks + 4 snares in one part
+        self.assertEqual(len(meta["parts"]), 2)
 
     def test_events_lists_and_options(self):
         s = tiny_spec(sections=[
@@ -154,7 +165,115 @@ class Spec(unittest.TestCase):
         with self.assertRaisesRegex(spec.SpecError, "not a note"):
             spec.compile(tiny_spec(sections=[{"name": "a", "bars": 1, "play": {"lead": "H9:1"}}]))
         with self.assertRaisesRegex(spec.SpecError, "unknown mixer fields"):
-            spec.compile(tiny_spec(master={"Reverb": 1}))
+            spec.compile(tiny_spec(master={"Reverberation": 1}))
+
+    def test_v3_song_features(self):
+        """Every playback V3 spec key compiles into the song.json fields the renderer reads."""
+        folder = Path(tempfile.mkdtemp())
+        tone(folder / "loop.wav", seconds=2, freq=330)
+        tone(folder / "ir.wav", seconds=.1, freq=2000)
+        s = tiny_spec(
+            instruments={"lead": "synth:square-lead", "drums": "synth:drum-kit", "acid": {"synthPreset": "acid BASS"}},
+            tracks={"lead": {"instrument": "lead", "gain": .3, "sends": [{"bus": "verb", "db": -6, "preFader": True}],
+                             "automation": {"volume": [{"bar": 1, "value": -20}, {"bar": 2, "value": 0, "curve": "smooth"}],
+                                            "pitch": {"points": [[0, 0], [4, 1, "step"]], "disabled": True}},
+                             "modulators": [{"kind": "lfo", "target": "pan", "amount": .5, "syncBeats": 2}],
+                             "expression": [{"bar": 1, "beat": 1, "note": "E5", "bendTo": 2, "bendEnd": .5, "vibrato": .2}],
+                             "keySwitches": [{"key": "C1", "articulation": 1}], "articulations": [{"Id": 1, "GainDb": -3}],
+                             "sampleShape": {"DecaySeconds": .3, "Sustain": .5}, "loop": {"start": .05, "end": .15, "crossfade": .01},
+                             "impulse": "ir.wav", "vibratoRate": 6, "ignoreSwing": True},
+                    "drums": {"instrument": "drums", "output": "glue"},
+                    "acid": {"instrument": "acid", "layer": "Bass", "gain": .2},
+                    "tape": {"audio": [{"file": "loop.wav", "section": "a", "bar": 2, "beats": 4, "fadeOut": 1, "warp": "tempo", "sourceBpm": 120}]}},
+            sections=[{"name": "a", "bars": 2, "play": {"lead": "tune", "drums": "beat", "acid": "C2:2 G1:2"}}],
+            buses={"verb": {"effects": {"Reverb": True, "ReverbMix": 1}, "output": "glue", "pan": .2},
+                   "glue": {"effects": {"Compressor": True, "SidechainTrack": "drums"}, "impulse": "ir.wav"}},
+            masterAutomation={"volume": [[6, 0], [8, -40, "smooth"]], "speed": [[0, 1], [8, 1]]},
+            master={"Color": {"StereoWidth": 1.2}, "AmpModel": "Crunch"},
+            swing=.2, swingGrid=.5, targetLufs=-16, variationSeed=3, key="C major",
+            keys=[{"bar": 2, "key": "A minor"}], chords=[{"bar": 1, "chord": "I"}], meterChanges=[{"bar": 2, "numerator": 7, "denominator": 8}],
+            masterImpulse="ir.wav")
+        song, meta = spec.compile(s, spec_dir=folder)
+        parts = {p["name"]: p for p in song["parts"]}
+        lead, acid, tape = parts["lead"], parts["acid"], parts["tape"]
+        self.assertEqual(lead["sends"], [{"bus": "verb", "db": -6.0, "preFader": True}])
+        self.assertEqual(lead["automation"][0], {"target": "volume", "points": [0.0, -20.0, 0, 4.0, 0.0, 2]})
+        self.assertTrue(lead["automation"][1]["disabled"])
+        self.assertEqual(lead["expression"], [{"beat": 1.0, "key": 76, "bendTo": 2, "bendEnd": .5, "vibrato": .2}])
+        self.assertEqual(lead["keySwitches"], [{"Key": 24, "Articulation": 1}])
+        self.assertEqual((lead["zones"][0]["loopStart"], lead["zones"][0]["loopEnd"], lead["loopCrossfade"]), (.05, .15, .01))
+        self.assertTrue(lead["trackEffects"] and lead["effects"]["CabinetImpulseMix"] == 1 and Path(lead["impulse"]).exists())
+        self.assertEqual(parts["drums"]["output"], "glue")
+        self.assertEqual((acid["synthPreset"], acid.get("sample")), ("Acid bass", None))
+        self.assertEqual(tape["regions"][0]["start"], 4.0)
+        self.assertEqual(tape["regions"][0]["warp"], "Tempo")
+        self.assertEqual(tape["notes"], [])
+        self.assertEqual([b["name"] for b in song["buses"]], ["verb", "glue"])
+        self.assertTrue(song["master"]["Limiter"], "targetLufs turns the limiter on")
+        self.assertEqual(song["meter"], [{"beat": 4.0, "numerator": 7, "denominator": 8}])
+        self.assertEqual((song["swing"], song["targetLufs"], song["variationSeed"], song["key"]), (.2, -16.0, 3, "C major"))
+        self.assertEqual([m["target"] for m in song["masterAutomation"]], ["volume", "speed"])
+        self.assertTrue(any("targetLufs" in w for w in meta["warnings"]))
+
+    def test_v3_errors(self):
+        with self.assertRaisesRegex(spec.SpecError, "need playbackVersion 3"):
+            spec.compile(tiny_spec(playbackVersion=2, tracks={"lead": {"instrument": "lead", "automation": {"volume": [[0, 0]]}}, "drums": "drums"}))
+        with self.assertRaisesRegex(spec.SpecError, "is not a bus"):
+            spec.compile(tiny_spec(tracks={"lead": {"instrument": "lead", "output": "nope"}, "drums": "drums"}))
+        with self.assertRaisesRegex(spec.SpecError, "no E4 starts at beat 0"):
+            spec.compile(tiny_spec(tracks={"lead": {"instrument": "lead", "expression": [{"beat": 0, "note": "E4", "bendTo": 1}]}, "drums": "drums"}))
+        with self.assertRaisesRegex(spec.SpecError, "unknown target 'loudness'"):
+            spec.compile(tiny_spec(masterAutomation={"loudness": [[0, 0]]}))
+        with self.assertRaisesRegex(spec.SpecError, "track target"):
+            spec.compile(tiny_spec(masterAutomation={"pan": [[0, 0]]}))
+        with self.assertRaisesRegex(spec.SpecError, "unknown synthPreset"):
+            spec.compile(tiny_spec(instruments={"lead": {"synthPreset": "Theremin"}, "drums": "synth:drum-kit"}))
+
+    def test_mixer_fields_match_the_engine(self):
+        """spec.MIXER_FIELDS lists the engine's MusicMixerSettings fields (the IR clip goes in "impulse" instead)."""
+        import re
+        text = (PLUGIN / "engine" / "Runtime" / "Mixing" / "MusicMixer.cs").read_text(encoding="utf-8")
+        body = text[text.index("public sealed class MusicMixerSettings"):]
+        body = body[:body.index("\n    }\n")]
+        fields = {n.strip() for m in re.finditer(r"public\s+(?!const)[\w.\[\]<>]+\s+([\w, ]+?)\s*(?:=[^;]*)?;", body) for n in m.group(1).split(",")}
+        self.assertEqual(spec.MIXER_FIELDS, fields - {"CabinetImpulse"})
+
+    def test_zone_split_and_budget(self):
+        folder = Path(tempfile.mkdtemp())
+        keys = list(range(24, 108, 3))                                 # 28 zones
+        for k in keys:
+            tone(folder / f"s{k}.wav")
+        (folder / "wide.sfz").write_text("\n".join(f"<region> sample=s{k}.wav lokey={k} hikey={k + 2} pitch_keycenter={k}" for k in keys))
+        s = tiny_spec(instruments={"wide": f"sfz:{folder / 'wide.sfz'}", "drums": "synth:drum-kit"},
+                      tracks={"a": {"instrument": "wide", "splits": 32}, "b": {"instrument": "wide", "splits": 32},
+                              "drums": {"instrument": "drums"}},
+                      sections=[{"name": "x", "bars": 8, "play": {
+                          "a": {"notes": " | ".join(f"{i} 1 {k}" for i, k in enumerate(keys))},
+                          "b": {"notes": " | ".join(f"{i} 1 {k + 1}" for i, k in enumerate(keys))},
+                          "drums": "beat"}}])
+        v3, _ = spec.compile(s)
+        self.assertEqual([len(p["zones"]) for p in v3["parts"] if p["name"] in ("a", "b")], [28, 28])   # V3: one part per track
+        song, meta = spec.compile(dict(s, playbackVersion=2))
+        self.assertLessEqual(len(song["parts"]), 32)
+        self.assertEqual(sum(1 for p in song["parts"] if p["name"].startswith("drums")), 2)
+        for p in song["parts"]:
+            for i in range(0, len(p["notes"]), 4):
+                self.assertLessEqual(abs(p["notes"][i + 2] - p["root"]), 48)
+        self.assertTrue(any("sample zones used" in w for w in meta["warnings"]))
+
+    def test_load_comments(self):
+        path = Path(tempfile.mkdtemp()) / "s.json"
+        path.write_text('// head\n{"title": "a // not a comment", /* x */ "bpm": 90,}\n')
+        self.assertEqual(spec.load(path), {"title": "a // not a comment", "bpm": 90})
+
+    def test_examples_compile(self):
+        for example in (PLUGIN / "examples").glob("*.json"):
+            data = spec.load(example)
+            uses = json.dumps(data.get("instruments", {}))
+            if "vsco2:" in uses or "find:" in uses:
+                continue                                               # needs downloads
+            with self.subTest(example=example.name):
+                spec.compile(data, spec_dir=example.parent)
 
 
 class Cli(unittest.TestCase):
@@ -187,41 +306,6 @@ class Cli(unittest.TestCase):
         quiet = cli._advice(dict(report, outputRmsDb=-29), {}, [])
         self.assertEqual(len(quiet), 1)
         self.assertIn("already normalized", quiet[0])
-
-    def test_zone_split_and_budget(self):
-        folder = Path(tempfile.mkdtemp())
-        keys = list(range(24, 108, 3))                                 # 28 zones
-        for k in keys:
-            tone(folder / f"s{k}.wav")
-        (folder / "wide.sfz").write_text("\n".join(f"<region> sample=s{k}.wav lokey={k} hikey={k + 2} pitch_keycenter={k}" for k in keys))
-        s = tiny_spec(instruments={"wide": f"sfz:{folder / 'wide.sfz'}", "drums": "synth:drum-kit"},
-                      tracks={"a": {"instrument": "wide", "splits": 32}, "b": {"instrument": "wide", "splits": 32},
-                              "drums": {"instrument": "drums"}},
-                      sections=[{"name": "x", "bars": 8, "play": {
-                          "a": {"notes": " | ".join(f"{i} 1 {k}" for i, k in enumerate(keys))},
-                          "b": {"notes": " | ".join(f"{i} 1 {k + 1}" for i, k in enumerate(keys))},
-                          "drums": "beat"}}])
-        song, meta = spec.compile(s)
-        self.assertLessEqual(len(song["parts"]), 32)
-        self.assertEqual(sum(1 for p in song["parts"] if p["name"].startswith("drums")), 2)
-        for p in song["parts"]:
-            for i in range(0, len(p["notes"]), 4):
-                self.assertLessEqual(abs(p["notes"][i + 2] - p["root"]), 48)
-        self.assertTrue(any("sample zones used" in w for w in meta["warnings"]))
-
-    def test_load_comments(self):
-        path = Path(tempfile.mkdtemp()) / "s.json"
-        path.write_text('// head\n{"title": "a // not a comment", /* x */ "bpm": 90,}\n')
-        self.assertEqual(spec.load(path), {"title": "a // not a comment", "bpm": 90})
-
-    def test_examples_compile(self):
-        for example in (PLUGIN / "examples").glob("*.json"):
-            data = spec.load(example)
-            uses = json.dumps(data.get("instruments", {}))
-            if "vsco2:" in uses or "find:" in uses:
-                continue                                               # needs downloads
-            with self.subTest(example=example.name):
-                spec.compile(data, spec_dir=example.parent)
 
 
 class Exports(unittest.TestCase):
@@ -304,7 +388,8 @@ class Render(unittest.TestCase):
         self.assertAlmostEqual(result["render"]["outputPeakDb"], -1, places=1)
         unity = Path(result["files"]["unity"])
         song = json.loads(unity.read_text())
-        self.assertTrue(all((unity.parent / "Samples" / p["sample"]).exists() for p in song["parts"]))
+        from notewright import export
+        self.assertTrue(all((unity.parent / "Samples" / owner[key]).exists() for owner, key in export._file_refs(song)))
         self.assertTrue((unity.parent / "CREDITS.md").exists())
         self.assertTrue(Path(result["files"]["midi"]).exists() and Path(result["files"]["musicxml"]).exists())
 
@@ -337,6 +422,33 @@ class Render(unittest.TestCase):
         _, alone = render(tiny_spec(sections=[a]))                      # the same as a song that ends after section a
         self.assertEqual(per_second, alone)
         self.assertLess(per_second[-1][0], per_second[-2][0] - 20)      # the tail is only the lead's release
+
+    def test_v3_spec_renders(self):
+        """A spec using playback V3 features renders: built-in synth, buses and sends, automation, a modulator, an audio clip."""
+        from notewright import cli
+        import io
+        import contextlib
+        folder = Path(tempfile.mkdtemp())
+        tone(folder / "loop.wav", seconds=2, freq=330)
+        (folder / "s.json").write_text(json.dumps(tiny_spec(
+            instruments={"lead": {"synthPreset": "Saw lead"}, "drums": "synth:drum-kit"},
+            tracks={"lead": {"instrument": "lead", "gain": .3, "sends": [{"bus": "verb", "db": -6}],
+                             "automation": {"lowpass": [[0, 800], [8, 8000, "smooth"]]}, "effects": {"LowPassHz": 8000},
+                             "modulators": [{"kind": "lfo", "target": "pan", "amount": .5, "syncBeats": 2}]},
+                    "drums": {"instrument": "drums", "gain": .5},
+                    "tape": {"audio": [{"file": "loop.wav", "bar": 2, "beats": 4}], "gain": .3}},
+            buses={"verb": {"effects": {"Reverb": True, "ReverbMix": 1}}},
+            masterAutomation={"volume": [[6, 0], [8, -30, "smooth"]]})))
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.main(["render", str(folder / "s.json"), "--out", str(folder / "out"), "--tail", "1", "--no-score", "--stems"])
+        result = json.loads(buffer.getvalue())
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["render"]["playbackVersion"], 3)
+        self.assertEqual(result["summary"]["engineParts"], 3)
+        stems = {s["name"]: s for s in result["stems"]}
+        self.assertGreater(stems["tape"]["rmsDb"], -60, "the audio clip plays")
+        self.assertGreater(stems["lead"]["rmsDb"], -60, "the built-in synth plays")
 
     def test_stems_keep_regions_apart(self):
         """Noise regions get their own stem instead of sounding in every track's stem; parallel stems match serial ones."""

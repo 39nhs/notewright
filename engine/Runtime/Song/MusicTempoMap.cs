@@ -72,5 +72,59 @@ namespace Graze.Presentation.Audio
             }
             return seconds+(beat-cursor)*60/bpm;
         }
+
+        public int ChangeCount => changes.Length;
+        public const int MaxSpeedChanges = 2048;
+
+        /// <summary>
+        /// The tempo map with a V3 master Speed lane folded in (tempo × <see cref="MusicAutomation.SpeedTempo"/>, held at <see cref="MinBpm"/>), so durations, seeking and
+        /// exports follow the tape speed. Constant stretches stay exact; varying ones become linear ramps of at most 1/8 beat.
+        /// </summary>
+        internal static MusicTempoMap WithSpeed(double bpm, double loopBeats, MusicTempoChange[] source, MusicAutomation speed)
+        {
+            var map = new MusicTempoMap(bpm, loopBeats, source);
+            if (speed == null) return map;
+            var breaks = new System.Collections.Generic.SortedSet<double> { 0 };
+            foreach (var c in map.changes) { breaks.Add(c.Beat); if (c.RampBeats > 0) breaks.Add(c.Beat + c.RampBeats); }
+            for (int i = 0; i < speed.PointCount; i++) breaks.Add(speed.BeatAt(i));
+            var points = new System.Collections.Generic.List<double>();
+            foreach (double b in breaks) if (b >= 0 && b < loopBeats - 1e-9) points.Add(b);
+            points.Add(loopBeats);
+            double Effective(double beat) => Math.Max(MinBpm, Math.Min(MaxBpm, map.At(Math.Min(beat, loopBeats - 1e-12), false) * MusicAutomation.SpeedTempo(speed.Evaluate(beat))));
+            double step = .125, varying = 0;
+            for (int i = 0; i + 1 < points.Count; i++) if (Varies(points[i], points[i + 1])) varying += points[i + 1] - points[i];
+            if (varying / step > MaxSpeedChanges) step = varying / MaxSpeedChanges;
+            bool Varies(double a, double c)
+            {
+                double first = Effective(a + 1e-9), mid = Effective((a + c) * .5), last = Effective(c - 1e-9);
+                return Math.Abs(first - mid) > 1e-9 || Math.Abs(mid - last) > 1e-9;
+            }
+            var result = new System.Collections.Generic.List<MusicTempoChange>();
+            double initial = Effective(1e-9), current = initial;
+            for (int i = 0; i + 1 < points.Count; i++)
+            {
+                double a = points[i], c = points[i + 1];
+                if (!Varies(a, c))
+                {
+                    double v = Effective(a + 1e-9);
+                    if (Math.Abs(v - current) > 1e-9 && a > 0) result.Add(new MusicTempoChange { Beat = a, Bpm = v });
+                    current = v; continue;
+                }
+                int n = Math.Max(1, (int)Math.Ceiling((c - a) / step - 1e-9));
+                double h = (c - a) / n;
+                for (int k = 0; k < n; k++)
+                {
+                    double x0 = a + k * h, start = Effective(x0 + 1e-9), end = Effective(x0 + h - 1e-9), ramp = h;
+                    if (k == 0 && Math.Abs(start - current) > 1e-9 && a > 0)
+                    {
+                        result.Add(new MusicTempoChange { Beat = x0, Bpm = start }); // a jump at the stretch start, then the ramp just after it
+                        x0 += 1e-7; ramp -= 1e-7;
+                    }
+                    result.Add(new MusicTempoChange { Beat = x0, Bpm = end, RampBeats = ramp });
+                    current = end;
+                }
+            }
+            return new MusicTempoMap(initial, loopBeats, result.ToArray());
+        }
     }
 }

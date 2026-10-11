@@ -16,6 +16,27 @@ namespace Graze.Tests
         [TestCase("Glide")]
         [TestCase("Drive")]
         [TestCase("TrackFx")]
+        [TestCase("Automation")]
+        [TestCase("AutomationFx")]
+        [TestCase("Routing")]
+        [TestCase("Sidechain")]
+        [TestCase("TimeStretch")]
+        [TestCase("Synth")]
+        [TestCase("Expression")]
+        [TestCase("SyncedEcho")]
+        [TestCase("Limiter")]
+        [TestCase("Zones")]
+        [TestCase("Modulators")]
+        [TestCase("Color")]
+        [TestCase("SampleLoop")]
+        [TestCase("NoteExpression")]
+        [TestCase("PerformanceFx")]
+        [TestCase("Organ")]
+        [TestCase("Variation")]
+        [TestCase("AudioRegions")]
+        [TestCase("FmWavetable")]
+        [TestCase("SampleShape")]
+        [TestCase("OrganPercussion")]
         public void EveryReleasedPlaybackVersionKeepsItsSound(string scenario)
         {
             var missing = new StringBuilder();
@@ -99,7 +120,7 @@ namespace Graze.Tests
                 Assert.AreEqual(MusicPlaybackVersion.V1, cue.PlaybackVersionOf(cue.GetPart(0)));
                 Assert.AreEqual(MusicPlaybackVersion.V1, cue.PlaybackVersionOf(cue.GetPart(1)));
                 foreach (int v in Enumerable.Range(MusicPlaybackVersion.Oldest, MusicPlaybackVersion.Latest))
-                    Assert.IsFalse(MusicPlaybackVersion.Describe(v).Contains("unknown"), "Every supported version is described for the Arranger");
+                    Assert.IsFalse(MusicPlaybackVersion.Describe(v).Contains("unknown"), "Every supported version is described");
             }
         }
 

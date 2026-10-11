@@ -1,12 +1,13 @@
 ---
 name: compose-song
-description: Compose, arrange, mix and render music with the com.graze.music engine (playback V2) — writes a song spec, picks or downloads instruments (built-in synths, VSCO 2 CE orchestral samples, or SFZ/WAV instruments on the user's computer), renders a WAV with a level report, and exports stems, MIDI, MusicXML/PDF sheet music and a Unity song folder. Use when the user asks to make, write, compose, arrange, remix, mix or render a song, melody, BGM, jingle, loop or score, or to turn music into .wav / MIDI / sheet music.
+description: Compose, arrange, mix and render music with the com.graze.music engine (playback V3) — writes a song spec, picks or downloads instruments (built-in synths, VSCO 2 CE orchestral samples, SFZ/WAV instruments on the user's computer, or the user's recordings), renders a WAV with a level report, and exports stems, MIDI, MusicXML/PDF sheet music and a Unity song folder. Use when the user asks to make, write, compose, arrange, remix, mix or render a song, melody, BGM, jingle, loop or score, or to turn music into .wav / MIDI / sheet music.
 ---
 
 # Compose a song with notewright
 
-You write a **song spec** (JSON), the plugin compiles it for the com.graze.music engine (the same runtime the Unity game uses,
-playback V2: 1024 voices, glide, drive, per-track effects) and renders it offline. You cannot hear the result: use the render
+You write a **song spec** (JSON), the plugin compiles it for the com.graze.music engine (playback V3: 1024 voices, a built-in
+synth with presets, multi-zone sampler, automation and modulators, mix buses with sends and sidechain, EQ/chorus/reverb/amp,
+limiter with a loudness target, per-note bends and vibrato, audio clips) and renders it offline. You cannot hear the result: use the render
 report (levels per section and per track, clipping, dropped notes) and the user's feedback.
 
 Run every command as (on Windows use `python` instead of `python3`):
@@ -62,7 +63,8 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
    (`--jobs`), so use it once for balance and render a section or bar range while iterating. A range render plays what comes before it (so reverb and held notes carry in) and
    stops at its end: the tail (`--tail`, default 2 s) only lets sounding notes, echoes and reverb ring out, and nothing of the
    next section plays in it; `sections[]` and `stems[].notes` cover only the range.
-7. **Mix from the report** (see [reference/mixing.md](reference/mixing.md)): `render.peakDb` / `outputPeakDb`,
+7. **Mix from the report** (see [reference/mixing.md](reference/mixing.md); use automation, sends and buses rather than
+   static levels only): `render.peakDb` / `outputPeakDb`,
    `render.outputRmsDb` (the file's level; `rmsDb` and every other level are before `--normalize`), `sections[].rmsDb` (energy curve), `stems[].rmsDb` (track balance, with `--stems`), `render.droppedNotes`,
    and `advice`. Adjust gains, pans, effects, master and arrangement, then re-render. Two or three passes are usually enough.
 8. **Deliver:** give the user the file paths (WAV, stems, MIDI, MusicXML/PDF, Unity folder), a short description of the
@@ -82,10 +84,11 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
 
 ## Rules
 
-- Keep `playbackVersion` at 2 unless the user needs V1 (older Unity builds). Never promise effects the engine lacks: there is no
-  reverb, EQ bands, automation curves or per-note pitch bend; use echo, filters, drive, compressor, gate and glitch regions.
-- Engine limits per song: 32 engine parts (each track uses one part per sample zone or drum sound actually played, plus additive
-  noise regions), 1024 simultaneous voices, 10–60000 BPM. `check` reports the part count and reduces sample zones automatically.
+- Use `playbackVersion` 3 (the default; see [reference/spec.md](reference/spec.md) "Playback V3 features"). Use 2 or 1 only to
+  match a song made with an older version. Never promise what the engine lacks: it cannot host VST/AU plugins, and there is no
+  live/MIDI-keyboard playing or vocal synthesis.
+- Engine limits per song: 32 engine parts (on V3 one per track, plus additive noise regions), 1024 simultaneous voices, 16 buses,
+  10–60000 BPM. `check` reports the part count.
 - In a sandbox the user cannot open your file paths: render with `--out` into the folder your environment shares with the user
   (for example its outputs folder), or copy the deliverables there.
 - Don't overwrite a user's spec or output without asking; write new files or versioned names (`song-v2.json`).

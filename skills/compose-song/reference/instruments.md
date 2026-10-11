@@ -19,6 +19,14 @@ All commands: `python3 "${CLAUDE_PLUGIN_ROOT}/notewright.py" instruments <action
 `piano-synth`, and `drum-kit` on General MIDI keys (kick 36, rim 37, snare 38, clap 39, toms 41/45/47/50, closed hat 42,
 pedal hat 44, open hat 46, crash 49, ride 51). Good for electronic, lo-fi, game and chiptune-adjacent styles.
 
+**The engine's own synth** (playback V3, no samples): `{"synthPreset": "<name>"}` in `instruments` — `Saw lead`, `Square lead`,
+`Pluck`, `Warm pad`, `Sub bass`, `Acid bass`, `Brass`, `Bell keys`, `Noise sweep`, `Jazz organ`, `Jazz organ perc`, `Rock organ`,
+`Gospel organ`, `FM e-piano`, `FM bell`, `FM bass`, `Wavetable pad`, `Wavetable vox`, `Init` — or `{"synth": {...}}` with your own
+settings (see spec.md). Unlike the sampled `synth:` instruments it has filters with envelopes, LFOs, unison and real organ/FM
+tones, and `automation` can sweep its `brightness` (filter) and `modulation` (LFO depth).
+
+**Your recordings** play as `audio` clips on a track (spec.md, Playback V3 features): loops, vocal takes, sound effects.
+
 **VS Chamber Orchestra 2 Community Edition** (`vsco2:`, CC0 1.0 — public domain, credit appreciated: "VSCO 2 CE by
 Versilian Studios"). 67 instruments: string sections (violin, viola, cello, contrabass: sustain, vibrato, tremolo, pizzicato,
 spiccato), solo violin, woodwinds (flute, piccolo, oboe, clarinet, bassoon), brass (french horn, trumpet, trombone, tuba, with

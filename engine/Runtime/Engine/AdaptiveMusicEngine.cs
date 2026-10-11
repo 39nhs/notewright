@@ -23,6 +23,7 @@ namespace Graze.Presentation.Audio
             public readonly double IncomingSeconds, GapSeconds;
             public double OutgoingSeconds;
             public MusicTrackEffects[] Effects; // built on the caller thread
+            public MusicConvolution Convolution;
             public Request(MusicCue cue, double beats) { Cue = cue; Beats = beats; }
             public Request(MusicCue cue, double beats, MusicTransitionMode mode, double maximumSeconds, double fixedSeconds, bool alignBars, double incomingSeconds, double gapSeconds)
             { Cue = cue; Beats = beats; Positioned = true; Mode = mode; MaximumSeconds = maximumSeconds; FixedSeconds = fixedSeconds; AlignBars = alignBars; IncomingSeconds = incomingSeconds; GapSeconds = gapSeconds; }
@@ -32,11 +33,14 @@ namespace Graze.Presentation.Audio
             public bool Repeated;
             public MusicCue Cue;
             public MusicTrackEffects[] Effects; // per part index, null = no track effects
+            public MusicConvolution Convolution;
             public double Start;
             public readonly int[] Index = new int[MusicCue.MaxParts];
             public readonly long[] Loop = new long[MusicCue.MaxParts];
+            /// <summary>Passes played before this deck started (a repeat-fade restart continues the count), for note variation.</summary>
+            public long Pass;
             public void Reset(MusicCue cue, double start)
-            { Cue = cue; Start = start; Repeated = false; Array.Clear(Index, 0, Index.Length); Array.Clear(Loop, 0, Loop.Length); }
+            { Cue = cue; Start = start; Repeated = false; Pass = 0; Array.Clear(Index, 0, Index.Length); Array.Clear(Loop, 0, Loop.Length); }
             public void Seek(MusicCue cue, double start, double local)
             {
                 Reset(cue, start);
@@ -62,9 +66,30 @@ namespace Graze.Presentation.Audio
             public double Pan;
             public int Version;
             public MusicPart Part;
+            public int PartIndex; // index in the cue's parts when the cue has V3 track automation, else -1
             public MusicTrackEffects Bus; // track effect bus this voice sums into (V2+), or null = master
             // V2 glide: pitch multiplier GlideRatio^(1 - GlideAge/GlideSeconds) bends the voice onto its (new) Key.
             public double GlideRatio, GlideAge, GlideSeconds;
+            public int SliceEnd; // V2 slice sampler: last frame of the slice (0 = the whole sample)
+            public double TakeGain; // V2 velocity layer / round-robin take balance (1 = the instrument's own sample)
+            // V3 time stretch: source start (slice or 0), pitch ratio, grain clock (output samples) and the two grains' source starts.
+            public bool Stretch;
+            public double StretchStart, StretchPitch, GrainAge, GrainStartA, GrainStartB;
+            // V3 built-in synth: this voice renders its instrument's MusicSynthPatch with state at _synth[Slot * SynthStride].
+            public bool Synth;
+            public int Slot;
+            // V3 per-note expression (MusicNote.BendFrom… / Vibrato): pitch offset in semitones over the note, vibrato at ExprRate Hz.
+            public bool Expr;
+            public float ExprFrom, ExprTo, ExprStart, ExprEnd, ExprVibrato;
+            public double ExprRate;
+            // V3 audio region voice: fades over the whole region (beats) and the stretch's recording seconds per beat (0 = the track's Stretch Bpm).
+            public bool Region;
+            public double RegionStart, RegionLength, RegionFadeIn, RegionFadeOut, StretchSpb;
+            public MusicRegionSegment RegionMap; // warp markers of the region, or null
+            // V3 sample shaping (MusicSampleShape): decay/sustain and a TPT state-variable filter with control-rate coefficients.
+            public MusicSampleShape Shape;
+            public double ShIc1, ShIc2, ShA1, ShA2, ShA3, ShK, ShEnvAtRelease;
+            public int ShCountdown;
         }
 
         private readonly int _sampleRate;
@@ -72,9 +97,23 @@ namespace Graze.Presentation.Audio
         private readonly MusicMixProcessor _mixRight;
         private readonly MusicMasterMixer _masterMixer;
         private readonly MusicMasterDrive _masterDrive;
+        private readonly MusicAmp _masterAmp;
+        private readonly MusicSpace _masterSpace;
+        private readonly MusicColor _masterColor; // V3 color stage of the master chain
+        private readonly MusicStutter _masterStutter; // V3 master beat repeat (Stutter lane)
+        // V3 master Speed lane (tape speed): scales the tempo clock and every V3 voice's pitch; 1 = off.
+        private double _speed = 1;
+        private readonly MusicLimiter _masterLimiter;
         private float _peakLeft, _peakRight;
         public float PeakLeft => Volatile.Read(ref _peakLeft);
         public float PeakRight => Volatile.Read(ref _peakRight);
+        private MusicLevelMeter _levelMeter;
+        /// <summary>Attach an application-owned stereo meter before rendering. One engine/audio writer per meter. Null disables it.</summary>
+        public void AttachLevelMeter(MusicLevelMeter meter)
+        {
+            if(meter!=null&&(meter.SampleRate!=_sampleRate||meter.Channels!=2)) throw new ArgumentException("Engine meter must be stereo at the engine's sample rate.");
+            Volatile.Write(ref _levelMeter,meter);
+        }
         private readonly double _repeatFadeSeconds;
         private readonly bool _playOnce;
         private readonly double _repeatPauseSeconds, _slowFadeInSeconds;
@@ -91,8 +130,19 @@ namespace Graze.Presentation.Audio
         private readonly int[] _matches = new int[MusicCue.MaxParts];
         private readonly int[] _bridgeKeys = new int[MusicCue.MaxParts];
         private readonly Voice[] _voices = new Voice[VoiceCapacity];
+        // V2 round robin: next take per (instrument, velocity layer). Slots are reused oldest-first; preallocated for the audio thread.
+        private const int RobinSlots = 128;
+        private readonly MusicInstrument[] _robinOwner = new MusicInstrument[RobinSlots];
+        private readonly int[] _robinNext = new int[RobinSlots * MusicInstrument.MaxVelocityLayers];
+        private int _robinCursor;
         private readonly double[] _frequency = new double[128];
         private readonly double[] _layerGain = { 1, 1, 1, 1 };
+        // V3 track automation evaluated once per frame: [(slot * MaxParts + part) * TargetCount + target], slot 0/1 = decks, 2 = rhythm deck.
+        // Volume is stored as linear gain, every other target as its value.
+        private readonly double[] _auto = new double[3 * MusicCue.MaxParts * MusicAutomation.TargetCount];
+        // V3 sidechain: each deck's key track levels this frame (peak of the track's own signal before its effects), [deck * MaxParts + part].
+        private readonly double[] _keyPeak = new double[2 * MusicCue.MaxParts];
+        private readonly double[] _followEnv = new double[2 * MusicCue.MaxParts * MusicModulators.MaxPerTrack]; // V3 envelope follower state
         private readonly float[] _layerTarget = { 1, 1, 1, 1 };
         private Request _mailbox, _waiting;
         private MusicCue _currentCue;
@@ -114,6 +164,15 @@ namespace Graze.Presentation.Audio
         private double _rhythmSwitchBeat;
         private double _publishedPosition, _lastEntry, _lastSourceProgress, _lastStart;
         public double PositionBeats => Volatile.Read(ref _publishedPosition);
+        /// <summary>Section of the current cue at <see cref="PositionBeats"/> (index into <c>CurrentCue.Sections</c>), or -1 before its first marker.</summary>
+        public int CurrentSection { get { var cue = CurrentCue; return cue == null ? -1 : cue.Sections.IndexAt(PositionBeats); } }
+        /// <summary>Name of the current section, or "".</summary>
+        public string CurrentSectionName { get { var cue = CurrentCue; return cue == null ? "" : cue.Sections.NameAt(PositionBeats); } }
+        /// <summary>Key in force at <see cref="PositionBeats"/> (song Key and key changes), or null.</summary>
+        public MusicKey? CurrentKey { get { var cue = CurrentCue; return cue?.HarmonyTrack.KeyAt(PositionBeats); } }
+        /// <summary>Chord-track chord at <see cref="PositionBeats"/>, or null.</summary>
+        public MusicChord? CurrentChord { get { var cue = CurrentCue; return cue?.HarmonyTrack.ChordAt(PositionBeats); } }
+        public string CurrentChordName { get { var cue = CurrentCue; return cue == null ? "" : cue.HarmonyTrack.ChordNameAt(PositionBeats); } }
         public double LastEntryBeat => Volatile.Read(ref _lastEntry);
         public double LastSourceProgress => Volatile.Read(ref _lastSourceProgress);
         public double LastTransitionStartBeat => Volatile.Read(ref _lastStart);
@@ -150,9 +209,16 @@ namespace Graze.Presentation.Audio
             _mixRight = new MusicMixProcessor(sampleRate);
             _masterMixer = new MusicMasterMixer(sampleRate);
             _masterDrive = new MusicMasterDrive(sampleRate);
-            _decks[0].Reset(initial, 0); _nextBar = initial.BeatsPerBar;
+            _masterAmp = new MusicAmp(sampleRate);
+            _masterSpace = new MusicSpace(sampleRate);
+            _masterColor = new MusicColor(sampleRate);
+            _masterStutter = new MusicStutter(sampleRate);
+            _masterLimiter = new MusicLimiter(sampleRate);
+            _decks[0].Reset(initial, 0); _nextBar = initial.Meter.NextBarLine(0);
             _decks[0].Effects = MusicTrackEffects.For(initial, sampleRate);
+            _decks[0].Convolution = MusicConvolution.For(initial.Mixer,initial.PlaybackVersion,sampleRate);
             _rhythm.Reset(initial, 0);
+            EnsureSynth(initial);
             for (int key = 0; key < 128; key++) _frequency[key] = 440 * Math.Pow(2, (key - 69) / 12.0);
         }
 
@@ -161,7 +227,8 @@ namespace Graze.Presentation.Audio
         {
             if (cue == null || !MusicTrack.Finite(transitionBeats) || transitionBeats < .25 || transitionBeats > 32)
                 throw new ArgumentException("Invalid transition.");
-            Interlocked.Exchange(ref _mailbox, new Request(cue, transitionBeats) { Effects = MusicTrackEffects.For(cue, _sampleRate) });
+            EnsureSynth(cue);
+            Interlocked.Exchange(ref _mailbox, new Request(cue, transitionBeats) { Effects = MusicTrackEffects.For(cue, _sampleRate), Convolution=MusicConvolution.For(cue.Mixer,cue.PlaybackVersion,_sampleRate) });
         }
 
         /// <summary>MaximumSeconds bounds wait plus blend; short remaining ToStart cues finish first.</summary>
@@ -176,7 +243,8 @@ namespace Graze.Presentation.Audio
                 (gapSeconds > 0 && incomingFadeSeconds <= 0)) throw new ArgumentException("Invalid fade timing.");
             if (!MusicTrack.Finite(outgoingFadeSeconds) || outgoingFadeSeconds < 0 || outgoingFadeSeconds > 120)
                 throw new ArgumentException("Invalid outgoing fade.");
-            Interlocked.Exchange(ref _mailbox, new Request(cue, transitionBeats, mode, maximumSeconds, fixedTransitionSeconds, alignBars, incomingFadeSeconds, gapSeconds) { OutgoingSeconds = outgoingFadeSeconds, Effects = MusicTrackEffects.For(cue, _sampleRate) });
+            EnsureSynth(cue);
+            Interlocked.Exchange(ref _mailbox, new Request(cue, transitionBeats, mode, maximumSeconds, fixedTransitionSeconds, alignBars, incomingFadeSeconds, gapSeconds) { OutgoingSeconds = outgoingFadeSeconds, Effects = MusicTrackEffects.For(cue, _sampleRate), Convolution=MusicConvolution.For(cue.Mixer,cue.PlaybackVersion,_sampleRate) });
         }
 
         public void SetLayerGain(MusicLayer layer, float gain)
@@ -187,22 +255,29 @@ namespace Graze.Presentation.Audio
         }
 
         public void Render(float[] output)
-            => RenderInternal(output, false);
+            => RenderInternal(output, false, output?.Length ?? 0);
 
         public void RenderStereo(float[] interleaved)
-            => RenderInternal(interleaved, true);
+            => RenderInternal(interleaved, true, interleaved?.Length ?? 0);
 
-        private void RenderInternal(float[] output, bool stereo)
+        private void RenderInternal(float[] output, bool stereo, int count)
         {
             if (output == null) throw new ArgumentNullException(nameof(output));
-            if (stereo && output.Length % 2 != 0) throw new ArgumentException("Stereo buffer must contain complete frames.");
+            if (stereo && count % 2 != 0) throw new ArgumentException("Stereo buffer must contain complete frames.");
             float peakLeft = 0, peakRight = 0;
+            var levelMeter = Volatile.Read(ref _levelMeter);
             int activeVoices = _activeVoices, peakVoices = _peakVoices;
             // No locks, Unity API calls or allocations in this method and its audio-thread callees.
-            for (int sample = 0; sample < output.Length; sample += stereo ? 2 : 1)
+            for (int sample = 0; sample < count; sample += stereo ? 2 : 1)
             {
                 // Cue automation owns the clock outside crossfades; transition tempo owns it during a crossfade.
                 if (_transitioning == 0) _bpm = _currentCue.Tempo.At(_beat - _decks[_current].Start, !_playOnce);
+                _speed = 1;
+                if (_transitioning == 0 && _currentCue.PlaybackVersion >= MusicPlaybackVersion.V3)
+                {
+                    var speedLane = _currentCue.MasterAutomation?[(int)MusicAutomationTarget.Speed];
+                    if (speedLane != null) _speed = speedLane.Evaluate(LocalPosition(_currentCue, _beat - _decks[_current].Start)); // the cue's tempo map already includes it
+                }
                 var request = Interlocked.Exchange(ref _mailbox, null);
                 if (request != null) { _waiting = request; _plannedBar = -1; }
                 if (_transitioning != 0)
@@ -234,16 +309,16 @@ namespace Graze.Presentation.Audio
                             if (_beat + 1e-9 >= _plannedBar) { BeginTransition(_waiting); _waiting = null; _plannedBar = -1; }
                         }
                     }
-                    _nextBar += _currentCue.BeatsPerBar;
+                    _nextBar += _currentCue.Meter.BarLengthAt(_nextBar - _decks[_current].Start);
                 }
                 if (!_playOnce && _repeatFadeSeconds > 0 && _transitioning == 0 && _waiting == null)
                 {
-                    double bar = _currentCue.BeatsPerBar;
+                    var meter = _currentCue.Meter;
                     // Use the last complete bar of excerpts ending mid-bar. Never wrap raw notes.
-                    double cycle = Math.Max(bar, Math.Floor(_currentCue.LoopBeats / bar) * bar);
+                    double cycle = Math.Max(meter.BarLengthAt(0), meter.BarFloor(_currentCue.LoopBeats));
                     double half = _repeatFadeSeconds * _bpm / 120;
                     double minimumCycle = (_repeatFadeSeconds / 2 + (_slowFadeInSeconds > 0 ? _slowFadeInSeconds : _repeatFadeSeconds / 2)) * _bpm / 60;
-                    cycle = Math.Max(cycle, Math.Ceiling(minimumCycle / bar) * bar);
+                    cycle = Math.Max(cycle, meter.BarCeil(minimumCycle));
                     double midpoint = _decks[_current].Start + cycle;
                     if (_beat + 1e-9 >= midpoint - half) BeginRepeat(midpoint, half);
                 }
@@ -286,6 +361,7 @@ namespace Graze.Presentation.Audio
                 for (int layer = 0; layer < 4; layer++)
                     _layerGain[layer] += (Volatile.Read(ref _layerTarget[layer]) - _layerGain[layer]) * (1 - Math.Exp(-1.0 / (_sampleRate * .05)));
                 double sum = 0, sumRight = 0;
+                UpdateAutomation();
                 int active = 0;
                 // Slot order is the mixing order; only slots below _voiceEnd can be active.
                 for (int i = 0; i < _voiceEnd; i++)
@@ -310,6 +386,7 @@ namespace Graze.Presentation.Audio
                     left *= (float)gain; right *= (float)gain;
                 }
                 peakLeft = Math.Max(peakLeft, Math.Abs(left)); peakRight = Math.Max(peakRight, Math.Abs(right));
+                levelMeter?.AddFrame(left,right);
                 if (stereo) { output[sample] = left; output[sample + 1] = right; }
                 else output[sample] = (left + right) * .5f;
                 // Keep the first bar intact: the note clock rests together with the audio.
@@ -317,6 +394,7 @@ namespace Graze.Presentation.Audio
                 _samples++;
             }
             Volatile.Write(ref _publishedBeat, _beat);
+            levelMeter?.Publish();
             Volatile.Write(ref _peakLeft, peakLeft); Volatile.Write(ref _peakRight, peakRight);
             Volatile.Write(ref _publishedBpm, _bpm);
             Volatile.Write(ref _activeVoices, activeVoices); Volatile.Write(ref _peakVoices, peakVoices);
@@ -341,7 +419,9 @@ namespace Graze.Presentation.Audio
             _incomingActivation = midpoint; _incomingPrimed = true;
             _decks[1 - _current].Reset(_currentCue, midpoint);
             _decks[1 - _current].Effects = _decks[_current].Effects; // same parts: the repeat shares the buses (tails continue)
+            _decks[1 - _current].Convolution = _decks[_current].Convolution;
             _decks[1 - _current].Repeated = true;
+            _decks[1 - _current].Pass = _decks[_current].Pass + 1; // the restart is the next pass
             _pendingRhythm = null;
             _lastEntry = 0; _lastSourceProgress = 1; _lastStart = _transitionStart;
             LastHandoffBeat = midpoint; LastTransitionStartSeconds = _samples / (double)_sampleRate;
@@ -370,8 +450,7 @@ namespace Graze.Presentation.Audio
             double fraction = LocalPosition(_currentCue, (_alignBars ? midpoint : _transitionStart) - _decks[_current].Start) / _currentCue.LoopBeats;
             _entryBeat = _positioned && request.Mode == MusicTransitionMode.MatchProgress ? fraction * request.Cue.LoopBeats : 0;
             if (_alignBars)
-                _entryBeat = Math.Min(Math.Floor((request.Cue.LoopBeats - 1e-8) / request.Cue.BeatsPerBar),
-                    Math.Floor(_entryBeat / request.Cue.BeatsPerBar + .5)) * request.Cue.BeatsPerBar;
+                _entryBeat = Math.Min(request.Cue.Meter.BarFloor(request.Cue.LoopBeats - 1e-8), request.Cue.Meter.Nearest(_entryBeat));
             _lastEntry = _entryBeat; _lastSourceProgress = fraction; _lastStart = _transitionStart;
             // Fixed-time handoff reserves the first half for fade-out and the second for fade-in.
             _harmonicBridge = !_endHandoff && (!_positioned || request.Mode != MusicTransitionMode.ForceFadeToStart) &&
@@ -407,6 +486,7 @@ namespace Graze.Presentation.Audio
                 _transitionLength * activation);
             _decks[1 - _current].Seek(request.Cue, _incomingActivation - _entryBeat, _entryBeat);
             _decks[1 - _current].Effects = request.Effects;
+            _decks[1 - _current].Convolution = request.Convolution;
             LastHandoffBeat = _incomingActivation;
             _incomingPrimed = _entryBeat == 0;
             if (_endHandoff)
@@ -460,8 +540,7 @@ namespace Graze.Presentation.Audio
                 // Wait as needed: the fade midpoint, not its start, is the source downbeat.
                 double half = FadeOutBeats(request, _bpm);
                 double origin = _decks[_current].Start;
-                double bar = Math.Ceiling((_beat + half - origin - 1e-9) / _currentCue.BeatsPerBar);
-                _plannedBar = Math.Max(_beat, origin + bar * _currentCue.BeatsPerBar - half);
+                _plannedBar = Math.Max(_beat, origin + _currentCue.Meter.BarCeil(_beat + half - origin - 1e-9) - half);
                 return;
             }
             double blendSeconds = request.FixedSeconds > 0 ? request.FixedSeconds : _positionedLength * secondsPerBeat;
@@ -469,7 +548,7 @@ namespace Graze.Presentation.Audio
             _plannedBar = Math.Min(_nextBar, latest);
             for (int bars = 0; bars <= MusicHarmony.MaxWaitBars; bars++)
             {
-                double boundary = _nextBar + bars * _currentCue.BeatsPerBar;
+                double boundary = _decks[_current].Start + _currentCue.Meter.Advance(_nextBar - _decks[_current].Start, bars);
                 if (boundary > latest + 1e-9) break;
                 double entry = request.Mode == MusicTransitionMode.MatchProgress ?
                     LocalPosition(_currentCue, boundary - _decks[_current].Start) / _currentCue.LoopBeats * request.Cue.LoopBeats : 0;
@@ -498,7 +577,7 @@ namespace Graze.Presentation.Audio
         }
 
         private static double TransitionLength(Request request) =>
-            Math.Ceiling(request.Beats / request.Cue.BeatsPerBar) * request.Cue.BeatsPerBar;
+            request.Cue.Meter.BarCeil(request.Beats);
 
         private bool CanBridge(MusicCue target, double boundary, double length, double entry = 0)
         {
@@ -514,7 +593,7 @@ namespace Graze.Presentation.Audio
             double length = TransitionLength(request);
             for (int bars = 0; bars <= MusicHarmony.MaxWaitBars; bars++)
             {
-                double boundary = _nextBar + bars * _currentCue.BeatsPerBar;
+                double boundary = _decks[_current].Start + _currentCue.Meter.Advance(_nextBar - _decks[_current].Start, bars);
                 if (CanBridge(request.Cue, boundary, length)) return boundary;
             }
             return _nextBar; // No suitable chord window: fade at the next bar rather than waiting indefinitely.
@@ -564,7 +643,7 @@ namespace Graze.Presentation.Audio
             _bpm = _currentCue.Tempo.At(_beat - _decks[_current].Start, !_playOnce);
             // Align future requests to the incoming cue's own bar grid.
             double local = _beat - _decks[_current].Start;
-            _nextBar = _decks[_current].Start + (Math.Floor((local + 1e-8) / _currentCue.BeatsPerBar) + 1) * _currentCue.BeatsPerBar;
+            _nextBar = _decks[_current].Start + _currentCue.Meter.NextBarLine(local);
             Volatile.Write(ref _transitioning, 0);
         }
 
@@ -615,8 +694,12 @@ namespace Graze.Presentation.Audio
                     var note = part.Notes[deck.Index[partId]];
                     double start = deck.Start + deck.Loop[partId] * deck.Cue.LoopBeats + note.Beat;
                     if (start > _beat + 1e-9) break;
-                    StartVoice(deckId, deck.Cue, part, note, start);
-                    if (drumsOnly && part.Gain > 0 && note.Velocity > 0) Interlocked.Increment(ref _drumNotes);
+                    // V3 note variation: left out on this pass (skip chance, every-n-th pass).
+                    if (!note.HasVariation || deck.Cue.PlaybackVersionOf(part) < MusicPlaybackVersion.V3 || MusicVariation.Plays(note, deck.Pass + deck.Loop[partId], partId, deck.Cue.VariationSeed))
+                    {
+                        StartVoice(deckId, deck.Cue, part, note, start);
+                        if (drumsOnly && part.Gain > 0 && note.Velocity > 0) Interlocked.Increment(ref _drumNotes);
+                    }
                     if (++deck.Index[partId] == part.Notes.Length)
                     { deck.Index[partId] = 0; deck.Loop[partId]++; }
                 }

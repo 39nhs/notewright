@@ -10,7 +10,7 @@ Working examples: `${CLAUDE_PLUGIN_ROOT}/examples/pop.json` and `orchestral.json
   "bpm": 104,                        // 10-60000
   "meter": 4,                        // beats per bar (x/4 time)
   "key": "A minor",                  // score key signature only ("F# major", "Bb", "Em"); notes are always absolute
-  "playbackVersion": 2,              // engine sound version; keep 2
+  "playbackVersion": 3,              // engine sound version (default 3: every feature below; 2 or 1 only to match an older song)
   "instruments": { "<alias>": <instrument>, ... },
   "tracks":      { "<name>": <track>, ... },
   "patterns":    { "<name>": <pattern>, ... },
@@ -19,8 +19,17 @@ Working examples: `${CLAUDE_PLUGIN_ROOT}/examples/pop.json` and `orchestral.json
   "tempo":       [ <tempo change>, ... ],
   "master":      { <mixer fields> },
   "regions":     [ <noise/glitch region>, ... ],
-  "output":      { "rate": 48000, "bits": 24, "tail": 2, "normalize": -1 }   // render defaults; CLI flags override
+  "output":      { "rate": 48000, "bits": 24, "tail": 2, "normalize": -1 },  // render defaults; CLI flags override
                                                 // tail: seconds after the end where only releases/echoes/reverb ring out
+  // playback V3 (see "Playback V3 features" below)
+  "buses":       { "<name>": <bus>, ... },      // shared effect chains tracks send or route to
+  "masterAutomation": { "<target>": [ <point>, ... ] },
+  "masterImpulse": "cab.wav",                   // IR on the master (≤ 250 ms WAV)
+  "targetLufs": -14,                            // loudness target, reached with the master limiter (turned on for you)
+  "swing": 0.2, "swingGrid": 0.5,               // delay every second grid step by swing × grid (0..0.75)
+  "variationSeed": 7,                           // seed for notes' "skip" chances
+  "keys":   [ {"bar": 17, "key": "C# minor"} ], // key changes (metadata), "chords": [ {"bar": 1, "chord": "i"} ] (metadata)
+  "meterChanges": [ {"bar": 9, "numerator": 7, "denominator": 8, "grouping": "2+2+3"} ]   // time signature metadata
 }
 ```
 
@@ -38,6 +47,8 @@ Working examples: `${CLAUDE_PLUGIN_ROOT}/examples/pop.json` and `orchestral.json
 | `"sfz:/path/inst.sfz"` | an SFZ instrument file directly |
 | `"dir:/path/folder"` | scan a folder and use the first instrument found |
 | `{"use": "...", "velocity": 60, "kind": "drums"}` | dict form: `velocity` picks the sample layer (1-127, default 100); `kind` filters `find:` |
+| `{"synthPreset": "Acid bass"}` | the engine's built-in synth (V3), a preset: `Init`, `Saw lead`, `Square lead`, `Pluck`, `Warm pad`, `Sub bass`, `Acid bass`, `Brass`, `Bell keys`, `Noise sweep`, `Jazz organ`, `Jazz organ perc`, `Rock organ`, `Gospel organ`, `FM e-piano`, `FM bell`, `FM bass`, `Wavetable pad`, `Wavetable vox` |
+| `{"synth": {"Osc1Wave": "Saw", "CutoffHz": 1200, ...}}` | the built-in synth with your own settings (C# field names of `MusicSynthSettings`: oscillators incl. `Organ` drawbars, `Fm`, `Wavetable`; filter and envelopes, two LFOs, mod matrix, unison); optional `"wavetable": "table.wav"` |
 
 Relative paths are relative to the spec file.
 
@@ -55,7 +66,8 @@ Relative paths are relative to the spec file.
   "effects": { "EchoWet": 0.2, "LowPassHz": 6000 }, // this track's own mixer chain (same fields as "master")
   "transpose": 0,                // semitones for every note (ignored on drum tracks)
   "velocity": 1.0,               // multiplier for every note's velocity
-  "splits": 8,                   // max sample zones (engine parts) this track may use; fewer = fewer parts, more stretching
+  "splits": 8,                   // V1/V2: max sample zones (engine parts) this track may use; fewer = fewer parts, more stretching
+  "zones": true,                 // V3: the whole track is one engine part with a zone per sample (false = V2-style splitting)
   "mute": false,
   "program": 0,                  // MIDI export General MIDI program (0-127); guessed from the instrument when absent
   "clef": "treble",              // score: treble | bass | treble8vb (guessed from the range)
@@ -105,6 +117,60 @@ next `@`); a suffix `E5:1@0.9` sets it for that note only:
 Sections run back to back; the song length is their sum. `repeat` duplicates the section (each copy is a separate section
 in the score/markers). Tracks not named in `play` are silent there. `offset` delays the pattern (beats) inside the section.
 
+## Playback V3 features
+
+Default `playbackVersion` 3 plays everything V2 does the same way and adds the features here; a track or song that uses none
+of them sounds exactly as in V2. On V1/V2 these keys are errors.
+
+**Positions and points.** Automation points and placements use the same position keys as everywhere: `bar` (1-based), `beat`
+(0-based) or `section` (+ `bar` inside it, + `beat`). A point is `{"bar": 9, "value": -12, "curve": "smooth"}` or `[beat, value, curve]`;
+`curve` (`linear` default, `step`, `smooth`) is the shape from that point to the next.
+
+**Track keys** (on any track):
+
+```jsonc
+"lead": {
+  "automation": {                                   // one lane per target; {"points": [...], "disabled": true} keeps it silent
+    "volume": [{"section": "chorus", "value": -12}, {"section": "chorus", "bar": 2, "value": 0, "curve": "smooth"}],   // dB on the gain, -80 = silent
+    "lowpass": [[0, 800], [32, 12000, "smooth"]]    // effect targets need "effects" on this track (and the stage turned on)
+  },
+  "modulators": [                                   // up to 8, on top of the lanes
+    {"kind": "lfo", "target": "lowpass", "amount": 1, "wave": "Triangle", "syncBeats": 4},   // or "rateHz"; amount in the target's units
+    {"kind": "follower", "target": "volume", "amount": -12, "source": "drums", "attackMs": 5, "releaseMs": 150}  // ducks under another track
+  ],
+  "sends": [{"bus": "verb", "db": -8, "preFader": false, "automation": [[0, -80], [16, -8]]}],   // post-fader send (dB -80..12)
+  "output": "glue",                                 // route this track into a bus instead of the master
+  "expression": [{"section": "chorus", "beat": 2, "note": "A5", "bendTo": 2, "bendStart": 0, "bendEnd": 0.5, "vibrato": 0.3},
+                 {"bar": 3, "note": "C5", "skip": 0.5}, {"bar": 4, "note": "E5", "every": 2, "offset": 1}],
+      // per note, matched by position and the pitch as it sounds (after transpose): bend semitones over beats from the note start,
+      // vibrato depth (semitones), "articulation" id, "skip" chance per loop pass, play only every n-th pass ("every"/"offset")
+  "audio": [{"file": "take.wav", "bar": 5, "beats": 8, "sourceStart": 0.5, "gainDb": -3, "fadeIn": 0.25, "fadeOut": 1,
+             "semitones": 0, "warp": "Tempo", "sourceBpm": 92}],   // recordings on the timeline; warp Off | Tempo | Markers ("markers": [[beat, seconds], ...])
+                                                    // a track with only "audio" needs no instrument
+  "loop": {"start": 0.4, "end": 1.2, "crossfade": 0.02},   // sustain loop (seconds of each sample): long notes from short recordings
+  "sampleShape": {"DecaySeconds": 0.5, "Sustain": 0.4, "Filter": "LowPass", "CutoffHz": 1200, "EnvelopeOctaves": 2},   // sample voice envelope and filter
+  "articulations": [{"Id": 1, "Name": "staccato", "StartSeconds": 0.01, "GainDb": -2, "LengthScale": 0.4}],
+  "keySwitches": [{"key": "C1", "articulation": 1}, {"key": "D1", "articulation": 0}],   // notes on these keys switch articulation (not played)
+  "vibratoRate": 5.5, "ignoreSwing": true,
+  "stretchBpm": 92, "stretchGrainMs": 60,           // time-stretch the sample from its recorded tempo (keeps pitch)
+  "impulse": "cab.wav"                              // IR cabinet on this track (≤ 250 ms WAV; turns its effects on)
+}
+```
+
+Automation targets: `volume` (dB), `pan` (-1..1, tracks only), `lowpass` (0..18000 Hz) / `highpass` (0..2000), `echo`, `chorus`, `reverb`
+(mix 0..1), `pitch` (semitones -24..24, tracks only), `modulation` (0..1, synth LFO depth, tracks only), `brightness` (synth filter octaves,
+tracks only), `gate` (depth, needs `Gate`), `crush` (mix), `drive` (dB, needs `Drive`), `driveMix`, `stutter` (≥ 0.5 repeats, needs
+`Stutter`), `width` (0..2), `rotary` (speed 0..1, needs Color `Rotary`), and on the master only `speed` (tape speed 0..2: 0 = stopped —
+tape stop / start).
+
+**Buses** (`"buses"`): `{"verb": {"effects": {"Reverb": true, "ReverbMix": 1}, "output": "glue", "pan": 0, "automation": {...}, "impulse": "ir.wav"}}`.
+A bus is a shared effect chain: tracks `send` into it or route their whole `output` to it; a bus feeds the master or another bus
+(`output`). Up to 16. Typical: one reverb bus all tracks send to; a "glue" compressor bus for drums; ducking with
+`"SidechainTrack": "kick"` in a compressor's fields.
+
+**Engine parts.** On V3 a sampled track is one engine part however many samples it uses (`zones`), so the 32-part limit
+counts tracks (+ additive noise regions), and `splits` no longer applies.
+
 ## tempo
 
 `[{"bar": 17, "bpm": 90, "rampBeats": 8}]` — at bar 17 start a linear ramp from the previous tempo to 90 BPM over 8 beats
@@ -117,11 +183,24 @@ in the score/markers). Tracks not named in `play` are silent there. `offset` del
 | `OutputDb` | -36..30 | output gain |
 | `LowPassHz`, `HighPassHz` | 0..18000, 0..2000 | 0 = off |
 | `Compressor`, `ThresholdDb`, `Ratio`, `AttackMs`, `ReleaseMs` | bool, -48..0, 1..20, 1..100, 10..1000 | |
-| `EchoWet`, `EchoSeconds`, `EchoFeedback` | 0..1, 0.01..2, 0..0.85 | delay; the only space effect (no reverb) |
+| `EchoWet`, `EchoSeconds`, `EchoFeedback` | 0..1, 0.01..2, 0..0.85 | delay |
+| `EchoBeats` | 0..8 | V3: echo time in beats (follows the tempo; 0 = `EchoSeconds`) |
 | `CrushBits`, `CrushDownsample`, `CrushMix` | 0..16 (0 off), 1..32, 0..1 | bitcrusher |
 | `NoiseGate`, `NoiseGateThresholdDb`, `NoiseGateRangeDb`, `NoiseGateHoldMs`, `NoiseGateReleaseMs` | | |
 | `Gate`, `GateBeats`, `GateOpen`, `GateDepth`, `GatePattern` | bool, 1/16..4, 0.05..0.95, 0..1, e.g. `"x.xx"` | tempo-synced trance gate |
 | `Drive`, `DriveMode`, `DriveDb`, `DriveMix`, `DriveToneHz`, `DriveKeepBassHz`, `DriveTrimDb` | bool, Soft/Hard/Fold/Fuzz, 0..48, 0..1, 0..18000, 0..300, -24..12 | saturation |
+| `Amp`, `AmpModel`, `AmpGainDb`, `AmpTightHz`, `AmpBassDb`, `AmpMidDb`, `AmpTrebleDb`, `AmpPresenceDb`, `AmpLevelDb` | bool, Clean/Crunch/HighGain/Bass, 0..60, 0..400, ±12 (tone stack), -36..12 | guitar/bass amp (feed a clean DI-like sound) |
+| `Cabinet`, `CabinetMix` | Off/Closed4x12/Open2x12/Combo1x12/Bass4x10, 0..1 | speaker cabinet after the amp |
+| `Eq`, `EqLowDb`, `EqLowHz`, `EqMidDb`, `EqMidHz`, `EqMidQ`, `EqHighDb`, `EqHighHz` | bool, ±24, 20..1000, ±24, 100..10000, 0.3..8, ±24, 1000..18000 | 3-band EQ |
+| `Chorus`, `ChorusMix`, `ChorusRateHz`, `ChorusDepthMs`, `ChorusDelayMs` | bool, 0..1, 0.05..10, 0..20, 1..30 | stereo chorus |
+| `Reverb`, `ReverbMix`, `ReverbSize`, `ReverbDamping`, `ReverbWidth`, `ReverbPreDelayMs` | bool, 0..1, 0..1, 0..1, 0..1, 0..200 | room reverb (order after drive: amp → cabinet → EQ → chorus → reverb) |
+| `Limiter`, `LimiterInputDb`, `LimiterCeilingDb`, `LimiterReleaseMs` | V3, master: bool, -24..24, -12..0, 5..2000 | true-peak brick-wall limiter (2 ms look-ahead) instead of the soft limiter |
+| `SidechainTrack` | V3: a track name | the compressor reacts to that track (ducking) |
+| `Stutter`, `StutterBeats` | V3: bool, 1/32..4 | beat repeat driven by a `stutter` lane |
+| `CabinetImpulseMix`, `CabinetImpulseGainDb`, `CabinetImpulseNormalize` | V3: 0..1, ±24, bool | the IR from `impulse` / `masterImpulse` / a bus `impulse` |
+| `Color` | V3: object | `{"EqBands": [{"Enabled": true, "Type": 0, "Hz": 350, "Db": -4, "Q": 1.2}], "Phaser": true, "PhaserRateHz": 0.3, "Flanger": true, "Tremolo": true, "TremoloPan": true, "TremoloBeats": 2, "StereoWidth": 1.4, "Multiband": true, "DeEsser": true, "Rotary": true, …}` (C# field names; band `Type` 0 Peak, 1 LowShelf, 2 HighShelf, 3 LowCut, 4 HighCut, 5 Notch) |
+
+V2 fields need `playbackVersion` 2+, V3 fields 3 (`check` warns otherwise). Enum fields take names (`"AmpModel": "Crunch"`).
 
 ## regions (noise and glitch effects over a time range)
 
@@ -135,6 +214,6 @@ in the score/markers). Tracks not named in `play` are silent there. `offset` del
 
 ## What `check` / `render` report
 
-`summary.tracks[].parts` shows how many engine parts each track needs; `warnings` lists merged sample zones, notes past the
+`summary.tracks[].parts` shows how many engine parts each track needs (1 per track on V3); `warnings` lists merged sample zones, notes past the
 end, substituted drum sounds. `render` adds `render` (peak/RMS dBFS, voices, dropped notes), `sections[]` (RMS per section),
 `stems[]` (with `--stems`) and `advice`. `report.json` also has per-second levels (`perSecond`: [rmsDb, peakDb]).

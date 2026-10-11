@@ -4,7 +4,7 @@
   "bpm": 104,
   "meter": 4,
   "key": "A minor",
-  "playbackVersion": 2,
+  "playbackVersion": 3,
 
   // alias → instrument: an id ("synth:pad", "vsco2:harp", "local:mylib/x"), "find:<words>", or {"use": "file:/x.wav", "root": "C4"}
   "instruments": {
@@ -19,12 +19,21 @@
   "tracks": {
     "drums": {"instrument": "drums", "gain": 0.55},
     "bass":  {"instrument": "bass", "layer": "Bass", "gain": 0.55, "release": 0.08, "glide": 0.06},
-    "keys":  {"instrument": "keys", "layer": "Harmony", "gain": 0.30, "pan": -0.2, "release": 0.4},
+    "keys":  {"instrument": "keys", "layer": "Harmony", "gain": 0.30, "pan": -0.2, "release": 0.4,
+              "sends": [{"bus": "verb", "db": -10}]},
+    // playback V3: an LFO opens and closes the pad's filter every 2 bars
     "pad":   {"instrument": "pad", "layer": "Harmony", "gain": 0.16, "pan": 0.2, "attack": 0.4, "release": 1.2,
-              "effects": {"LowPassHz": 3500}},
+              "effects": {"LowPassHz": 3500},
+              "modulators": [{"kind": "lfo", "target": "lowpass", "amount": 0.8, "wave": "Sine", "syncBeats": 8}]},
+    // tempo-synced echo (EchoBeats), a reverb send and a volume swell into the chorus (automation points: position + value)
     "lead":  {"instrument": "lead", "gain": 0.20, "pan": 0.1, "release": 0.15,
-              "effects": {"EchoWet": 0.22, "EchoSeconds": 0.43, "EchoFeedback": 0.35, "LowPassHz": 6000}}
+              "effects": {"EchoWet": 0.22, "EchoBeats": 0.75, "EchoFeedback": 0.35, "LowPassHz": 6000},
+              "sends": [{"bus": "verb", "db": -6}],
+              "automation": {"volume": [{"section": "chorus", "value": -12}, {"section": "chorus", "bar": 2, "value": 0, "curve": "smooth"}]}}
   },
+
+  // mix buses (V3): shared effects that tracks send to
+  "buses": {"verb": {"effects": {"Reverb": true, "ReverbMix": 1, "ReverbSize": 0.6, "ReverbDamping": 0.5}}},
 
   "patterns": {
     // drum grid: one character per step (default 0.25 beat). X accent, x hit, o soft, g ghost, . rest; | and spaces ignored
@@ -52,5 +61,6 @@
   ],
 
   "master": {"Compressor": true, "ThresholdDb": -14, "Ratio": 3, "OutputDb": 0},
+  "masterAutomation": {"volume": [{"section": "outro", "bar": 3, "value": 0}, {"section": "outro", "bar": 5, "value": -40, "curve": "smooth"}]},
   "output": {"rate": 48000, "bits": 24, "tail": 3, "normalize": -1}
 }

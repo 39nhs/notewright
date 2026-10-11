@@ -13,12 +13,22 @@ namespace Graze.Presentation.Audio
             public string Name;
             public int Channel, Program;
             public readonly List<MusicNote> Notes = new List<MusicNote>();
+            /// <summary>Expression lanes from this channel (pitch bend, CC1, CC74), indexed like <see cref="MusicMidiExpression.Targets"/>; null = none.</summary>
+            public readonly MusicAutomationPoint[][] Expression = new MusicAutomationPoint[3][];
         }
         public struct Tempo { public double Beat, Bpm; }
         public sealed class Result
         {
             public readonly List<Part> Parts = new List<Part>();
             public readonly List<Tempo> Tempos = new List<Tempo>();
+            /// <summary>Time signatures in file order (beat, numerator, denominator), including the one at beat 0.</summary>
+            public readonly List<MusicMeterChange> Meters = new List<MusicMeterChange>();
+            /// <summary>Key signature (FF 59) at the start, as a key name ("E minor"); null when the file has none.</summary>
+            public string Key;
+            /// <summary>Key signatures after the first one (beat, key name).</summary>
+            public readonly List<MusicKeyChange> KeyChanges = new List<MusicKeyChange>();
+            /// <summary>Marker meta events (FF 06) in file order: section names at beats.</summary>
+            public readonly List<MusicSectionMarker> Markers = new List<MusicSectionMarker>();
             public readonly List<string> Warnings = new List<string>();
             public int BeatsPerBar = 4;
             public double Bpm = 120, EndBeat;
@@ -69,7 +79,7 @@ namespace Graze.Presentation.Audio
                 throw new InvalidDataException("Only SMF 0/1 with PPQN timing is supported (no format 2/SMPTE).");
             c.Skip(headerLength - 6);
             var result = new Result();
-            bool ignoredController = false, dangling = false;
+            bool ignoredController = false, dangling = false, droppedExpression = false;
             int totalNotes = 0;
             for (int track = 0; track < tracks; track++)
             {
@@ -83,6 +93,10 @@ namespace Graze.Presentation.Audio
                 var active = new Dictionary<int, Queue<Held>>();
                 var released = new List<Held>[16];
                 var parts = new Dictionary<int, Part>();
+                var expression = new List<MusicAutomationPoint>[16, 3];
+                // RPN 0 (CC101 = 0, CC100 = 0, then data entry CC6) sets a channel's bend range; 127/127 is the null RPN.
+                var bendRange = new double[16]; var rpnMsb = new int[16]; var rpnLsb = new int[16];
+                for (int i = 0; i < 16; i++) { bendRange[i] = MusicMidiExpression.DefaultBendRange; rpnMsb[i] = rpnLsb[i] = 127; }
                 string name = "Track " + (track + 1);
                 for (int i = 0; i < 16; i++) released[i] = new List<Held>();
                 while (c.Position < end)
@@ -98,6 +112,18 @@ namespace Graze.Presentation.Audio
                         int type = c.Byte(), size = c.Variable();
                         if (size > end - c.Position) throw new InvalidDataException("Truncated metadata.");
                         if (type == 3) name = c.Text(size);
+                        else if (type == 0x59 && size == 2)
+                        {
+                            int sf = unchecked((sbyte)c.Byte()), mi = c.Byte();
+                            if (sf >= -7 && sf <= 7 && mi <= 1)
+                            {
+                                string named = MidiMusicWriter.KeyName(sf, mi == 1);
+                                if (result.Key == null && tick == 0) result.Key = named;
+                                else if (result.Key == null) { result.Key = named; result.KeyChanges.Add(new MusicKeyChange(tick / (double)ppqn, named)); }
+                                else result.KeyChanges.Add(new MusicKeyChange(tick / (double)ppqn, named));
+                            }
+                        }
+                        else if (type == 6) { string text = c.Text(size).Trim(); if (text.Length > 0) result.Markers.Add(new MusicSectionMarker(text.Length > MusicSections.MaxNameLength ? text.Substring(0, MusicSections.MaxNameLength) : text, tick / (double)ppqn)); }
                         else if (type == 0x51 && size == 3)
                         {
                             int micros = c.Byte() << 16 | c.Byte() << 8 | c.Byte();
@@ -109,7 +135,8 @@ namespace Graze.Presentation.Audio
                             int numerator = c.Byte(), power = c.Byte(); c.Skip(2);
                             double quarterBeats = numerator * 4.0 / Math.Pow(2, power);
                             if (tick == 0 && quarterBeats >= 1 && quarterBeats <= 12 && quarterBeats == Math.Floor(quarterBeats)) result.BeatsPerBar = (int)quarterBeats;
-                            else result.Warnings.Add("Meter change or fractional quarter-note bar: review the bar grid manually.");
+                            if (power <= 6 && numerator >= 1 && numerator <= 64) result.Meters.Add(new MusicMeterChange(tick / (double)ppqn, numerator, 1 << power));
+                            else result.Warnings.Add("Unsupported time signature " + numerator + "/2^" + power + ": review the bar grid manually.");
                         }
                         else c.Skip(size);
                         if (type == 0x2f) { c.Position = end; break; }
@@ -144,6 +171,16 @@ namespace Graze.Presentation.Audio
                         }
                     }
                     else if (kind == 0xc0) programs[channel] = a;
+                    else if (kind == 0xe0 || (kind == 0xb0 && MusicMidiExpression.ControllerTarget(a) >= 0))
+                    {
+                        int lane = kind == 0xe0 ? 0 : MusicMidiExpression.ControllerTarget(a);
+                        float value = lane == 0 ? MusicMidiExpression.Bend(a | b << 7, bendRange[channel]) : lane == 1 ? MusicMidiExpression.Modulation(b) : MusicMidiExpression.Brightness(b);
+                        var list = expression[channel, lane] ?? (expression[channel, lane] = new List<MusicAutomationPoint>());
+                        if (!MusicMidiExpression.Add(list, tick / (double)ppqn, value)) droppedExpression = true;
+                    }
+                    else if (kind == 0xb0 && a == 101) rpnMsb[channel] = b;
+                    else if (kind == 0xb0 && a == 100) rpnLsb[channel] = b;
+                    else if (kind == 0xb0 && a == 6 && rpnMsb[channel] == 0 && rpnLsb[channel] == 0) bendRange[channel] = Math.Max(1, Math.Min(24, b));
                     else if (kind == 0xb0 && a == 64)
                     {
                         sustain[channel] = b >= 64;
@@ -155,12 +192,17 @@ namespace Graze.Presentation.Audio
                     foreach (var held in queue) { EndNote(held, tick, ppqn); dangling = true; }
                 foreach (var list in released) foreach (var held in list) EndNote(held, tick, ppqn);
                 result.EndBeat = Math.Max(result.EndBeat, tick / (double)ppqn);
+                foreach (var part in parts.Values)
+                    for (int lane = 0; lane < 3; lane++)
+                        if (expression[part.Channel, lane] != null)
+                            part.Expression[lane] = MusicMidiExpression.Finish(expression[part.Channel, lane], lane, 0, tick / (double)ppqn);
                 c.End = bytes.Length;
             }
             result.Tempos.Sort((a, b) => a.Beat.CompareTo(b.Beat));
             foreach (var tempo in result.Tempos) if (tempo.Beat == 0) result.Bpm = tempo.Bpm;
             if (result.Tempos.Count > 1) result.Warnings.Add("Original tempo map retained in import notes; runtime uses one editable base BPM plus live transitions.");
-            if (ignoredController) result.Warnings.Add("Pitch bend, expression/volume controllers, aftertouch and SysEx are not rendered. CC64 sustain is supported.");
+            if (ignoredController) result.Warnings.Add("Expression/volume controllers, aftertouch and SysEx are not rendered. CC64 sustain is supported; pitch bend, CC1 and CC74 become playback V3 lanes.");
+            if (droppedExpression) result.Warnings.Add("A pitch bend / CC1 / CC74 lane reached " + MusicAutomation.MaxPoints + " points; later changes were dropped.");
             if (dangling) result.Warnings.Add("Unclosed notes ended at their track end.");
             foreach (var part in result.Parts) part.Notes.Sort((a, b) => a.Beat.CompareTo(b.Beat));
             return result;

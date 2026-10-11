@@ -26,18 +26,25 @@ For orchestral music: melody instrument loudest, strings pad -4 to -8, harp/arpe
 
 ## Tools
 
-- **Space and depth:** no reverb. Use `EchoWet` 0.1–0.3 with `EchoSeconds` ≈ a dotted-eighth or quarter of the beat
-  (60 / bpm × 0.75 or × 1) and `EchoFeedback` 0.2–0.45; longer `release`; `LowPassHz` on background tracks (pads 2–5 kHz)
-  and quieter gain push things back; panning (±0.2–0.6) separates parts of similar range.
-- **Clarity:** keep one instrument per register at a time; `HighPassHz` 100–250 on pads/keys clears the low end for bass and kick.
-- **Glue/loudness:** master `Compressor: true, ThresholdDb -14…-18, Ratio 2–4, AttackMs 10–30, ReleaseMs 100–250`; then
-  `--normalize -1`.
+- **Space and depth:** one reverb bus (`"buses": {"verb": {"effects": {"Reverb": true, "ReverbMix": 1, "ReverbSize": 0.5–0.8}}}`)
+  that tracks `send` to (-12…-4 dB; more for pads and leads, little for bass and kick); echo with `EchoBeats` 0.75 (dotted
+  eighth) or 1 and `EchoFeedback` 0.2–0.45; `LowPassHz` on background tracks (pads 2–5 kHz) and quieter gain push things back;
+  panning (±0.2–0.6) separates parts of similar range.
+- **Clarity:** keep one instrument per register at a time; `HighPassHz` 100–250 on pads/keys clears the low end for bass and kick;
+  `Eq` (3-band) or `Color.EqBands` (parametric) to cut mud (250–400 Hz) or harshness (2–5 kHz); duck bass or pads under the kick
+  with a compressor whose `SidechainTrack` is the kick track (or a `follower` modulator on volume).
+- **Glue/loudness:** master `Compressor: true, ThresholdDb -14…-18, Ratio 2–4, AttackMs 10–30, ReleaseMs 100–250`; then either
+  `--normalize -1` or a loudness target: `"targetLufs": -14` (streaming pop) / -16…-20 (orchestral, ambient), which drives the
+  master `Limiter` (report: `lufs`, `limiterInputDb`).
 - **Grit/character:** track `drive` 6–18 dB (`Soft` warm, `Hard` aggressive, `Fold` metallic, `Fuzz` broken); master `Drive`
   with `DriveMix` < 1 for parallel saturation; `CrushBits` 6–10 for lo-fi/chiptune.
 - **Movement:** `Gate` with `GatePattern` (`"x.x.xx.x"`) for trance/side-chain style chops; glitch `regions` for transitions
   (StutterGlitch / PitchGlitch over the last 1–2 beats before a drop); White/Pink noise regions as risers (`FadeInBeats` ≈
   length).
 - **808 slides:** `glide` 0.04–0.12 on the bass track and overlapping notes.
+- **Changes over time:** `automation` lanes for builds (volume swells, a `lowpass` opening over 8 bars into the drop, more
+  `reverb` in a bridge), `modulators` for motion (a slow LFO on a pad's filter or pan), `masterAutomation` `volume` for fades and
+  `speed` for a tape stop. Automate instead of making whole sections louder or quieter by gain alone.
 
 ## Iterating
 
