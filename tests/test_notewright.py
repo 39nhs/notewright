@@ -298,6 +298,17 @@ class Cli(unittest.TestCase):
                                                    {"lo": 61, "hi": 103, "key": 72, "sample": "b"}]})
         self.assertEqual(brief["range"], "C1-G7 (24-103)")
 
+    def test_advice_wants_a_lead_in_and_a_ring_out(self):
+        from notewright import cli
+        report = {"peakDb": -3, "rmsDb": -14, "gainDb": 0, "outputRmsDb": -14, "seconds": 10}
+        abrupt = [[-12, -3]] * 8 + [[-40, -30], [-80, -70]]          # full level from the first to the last second, then the 2 s tail
+        tips = cli._advice(report, {}, [], abrupt, tail=2)
+        self.assertTrue(any("starts at almost full level" in t for t in tips), tips)
+        self.assertTrue(any("ends at almost full level" in t for t in tips), tips)
+        soft = [[-30, -20], [-20, -10]] + [[-12, -3]] * 4 + [[-20, -10], [-34, -24]] + [[-50, -40], [-80, -70]]
+        self.assertEqual(cli._advice(report, {}, [], soft, tail=2), [])
+        self.assertEqual(cli._advice(report, {}, [], None, tail=2), [], "range renders are not checked")
+
     def test_advice_reads_the_normalized_level(self):
         from notewright import cli
         report = {"peakDb": -9, "rmsDb": -30, "gainDb": 8, "outputRmsDb": -22, "parts": [
@@ -392,6 +403,27 @@ class Render(unittest.TestCase):
         self.assertTrue(all((unity.parent / "Samples" / owner[key]).exists() for owner, key in export._file_refs(song)))
         self.assertTrue((unity.parent / "CREDITS.md").exists())
         self.assertTrue(Path(result["files"]["midi"]).exists() and Path(result["files"]["musicxml"]).exists())
+
+    def test_setup_checks_and_caches(self):
+        """setup verifies a runtime with a test render, saves it, and answers from its cache until the environment changes."""
+        from notewright import cli, engine
+        import io
+        import contextlib
+
+        def run(*flags):
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                code = cli.main(["setup", *flags])
+            return code, json.loads(buffer.getvalue())
+
+        code, first = run("--force")
+        self.assertEqual(code, 0, first)
+        self.assertTrue(first["ok"] and not first["cached"])
+        self.assertEqual(next(c for c in first["checks"] if c["name"] == "renderer")["status"], "ok")
+        self.assertEqual(engine.verified_kind() or engine.runtime()["kind"], engine.runtime()["kind"])
+        _, again = run()
+        self.assertTrue(again["cached"])
+        self.assertEqual(again["runtime"], first["runtime"])
 
     def test_section_tail_plays_nothing_later(self):
         """A section render's tail lets sounding notes ring out; the next section's notes and regions never start in it."""

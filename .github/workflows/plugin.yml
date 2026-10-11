@@ -1,5 +1,5 @@
 # Plugin checks: engine tests on Mono and .NET (Linux), Python unit tests with a render through the engine and a git-only
-# instrument download, doctor, an example render, and the same render with stems compared byte for byte between .NET and
+# instrument download, doctor and setup, an example render, and the same render with stems compared byte for byte between .NET and
 # Mono (Linux) or .NET Framework (Windows, which also runs the unit tests on .NET Framework).
 name: plugin
 on:
@@ -47,6 +47,8 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Doctor
         run: python notewright.py doctor
+      - name: Setup (start-of-work check with a test render)
+        run: python notewright.py setup
       - name: Render the built-in example
         run: python notewright.py render examples/pop.json --out out --stems --unity
       - name: Mono and .NET render the same WAV and stems
