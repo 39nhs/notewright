@@ -147,6 +147,12 @@ def cmd_setup(args):
     else:
         check("instrument downloads", "warning", "github.com is not reachable", "use built-in synths, the engine synth and the user's own "
               "instruments; VSCO 2 needs network access to github.com (git or raw.githubusercontent.com)")
+    if paths.vst3_supported():
+        check("vst3", "ok" if paths.PLUGIN_HOST.exists() else "action", "VST3 instruments and effects available (`notewright plugins` lists them)"
+              if paths.PLUGIN_HOST.exists() else f"the plugin host is missing: {paths.PLUGIN_HOST}", None if paths.PLUGIN_HOST.exists()
+              else "reinstall or update the plugin")
+    else:
+        check("vst3", "info", "not available here: VST3 plugins work only on Windows x64 (use the built-in synth, samples and effects)")
     musescore = export.musescore()
     check("musescore", "ok" if musescore else "info", musescore or "not installed: --pdf is unavailable (MusicXML still works)")
     ok = rt["ok"] and not any(c["status"] == "action" for c in checks)
@@ -191,6 +197,24 @@ def cmd_instruments(args):
         for i in args.terms:
             catalog.remove(i)
         _print({"removed": args.terms})
+    return 0
+
+
+def cmd_plugins(args):
+    """Installed VST3 plugins (Windows x64 only), or one plugin's parameters and state with --info."""
+    if not paths.vst3_supported():
+        _print({"ok": False, "error": paths.VST3_UNAVAILABLE})
+        return 1
+    if args.info:
+        info = engine.plugin_info(args.info, preset=args.preset, roots=args.roots)
+        if not args.state:
+            info["state"] = f"{len(info['state'])} characters (add --state to print it)"
+        _print(info)
+    else:
+        found = engine.plugins(rescan=args.rescan, roots=args.roots)
+        kinds = [k for k in ("instrument", "effect") if not args.kind or args.kind == k]
+        _print({"ok": True, "worker": f"protocol {found['worker']}", "roots": found["roots"], "errors": found["errors"],
+                "plugins": [{k: p[k] for k in ("name", "vendor", "version", "kind", "classId")} for p in found["plugins"] if p["kind"] in kinds]})
     return 0
 
 
@@ -239,6 +263,8 @@ def cmd_check(args):
 def _advice(report, meta, sections, per_second=None, tail=0.0):
     """Mixing tips from the report. per_second (full renders only) also checks the start and end for a lead-in and a ring-out."""
     tips = []
+    for warning in report.get("pluginWarnings") or []:
+        tips.append(f"VST3: {warning} — the track played its fallback (or the insert was bypassed); check the plugin and its settings")
     if report.get("droppedNotes"):
         tips.append(f"{report['droppedNotes']} notes were dropped by the voice limit ({report['voiceLimit']}): shorten releases or thin dense parts")
     peak = report.get("peakDb", -200)
@@ -295,6 +321,9 @@ def cmd_render(args):
         start = (float(first) - 1) * meter
         length = ((float(last) if last else float(first)) - float(first) + 1) * meter
     result = {"ok": True, "outDir": str(out_dir), "files": {}}
+    if meta["vst3"] and not args.score_only and not paths.vst3_supported():
+        raise specs.SpecError(f"this spec uses VST3 plugins ({', '.join(meta['vst3'])}). {paths.VST3_UNAVAILABLE} "
+                              "--score-only still writes MIDI and MusicXML.")
     if not args.score_only:
         wav = out_dir / f"{slug}{'-' + _slug(args.section) if args.section else ''}{'-bars-' + args.bars if args.bars else ''}.wav"
         normalize = args.normalize if args.normalize is not None else output.get("normalize")
@@ -326,6 +355,10 @@ def cmd_render(args):
         result["render"] = {k: report[k] for k in ("seconds", "rate", "bits", "playbackVersion", "peakVoices", "voiceLimit", "droppedNotes",
                                                     "peakDb", "rmsDb", "gainDb", "outputPeakDb", "outputRmsDb", "nearFullScale")}
         result["sections"] = sections
+        if report.get("plugins"):
+            result["plugins"] = report["plugins"]
+        if report.get("pluginWarnings"):
+            result["pluginWarnings"] = report["pluginWarnings"]
         if report.get("parts"):
             result["stems"] = [{k: p[k] for k in ("name", "kind", "file", "notes", "rmsDb", "peakDb")} for p in report["parts"]]
         full = start is None and length is None
@@ -396,6 +429,13 @@ def main(argv=None):
     p.add_argument("--score-only", action="store_true", help="skip audio; write MIDI and MusicXML")
     p.add_argument("--pdf", action="store_true", help="also convert the score to PDF with MuseScore")
     p.add_argument("--unity", action="store_true", help="also write a Unity SongJsonBuilder folder (song.json + Samples + CREDITS)")
+    p = sub.add_parser("plugins", help="installed VST3 instruments and effects (Windows x64 only); --info NAME lists a plugin's parameters")
+    p.add_argument("--info", metavar="NAME", help="load this plugin (name or class ID): parameter keys, values 0-1, latency, state")
+    p.add_argument("--preset", help="with --info: read this .vstpreset into the state (for 'state' in the spec)")
+    p.add_argument("--state", action="store_true", help="with --info: print the whole state (base64)")
+    p.add_argument("--kind", choices=["instrument", "effect"])
+    p.add_argument("--rescan", action="store_true", help="scan every plugin again instead of using the cached scan")
+    p.add_argument("--roots", help="VST3 folders to scan, ';'-separated (default: the standard folders, or NOTEWRIGHT_VST3_PATH)")
     p = sub.add_parser("convert", help="convert a score with MuseScore (e.g. song.musicxml song.pdf)")
     p.add_argument("source")
     p.add_argument("target")
@@ -404,7 +444,7 @@ def main(argv=None):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     args = parser.parse_args(argv)
     handlers = {"doctor": cmd_doctor, "setup": cmd_setup, "instruments": cmd_instruments, "new": cmd_new, "check": cmd_check, "render": cmd_render,
-                "convert": cmd_convert}
+                "convert": cmd_convert, "plugins": cmd_plugins}
     try:
         return handlers[args.command](args)
     except (specs.SpecError, catalog.CatalogError, engine.EngineError, RuntimeError, FileNotFoundError, ValueError) as error:

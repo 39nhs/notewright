@@ -38,6 +38,7 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
    `doctor` is the same check without fixing or caching, for diagnosing.
    - **No runtime at all:** still deliver the music: `render <spec> --score-only` writes the MIDI and MusicXML score without
      the renderer. Say the WAV needs .NET or Mono (Claude Code on a computer, or a sandbox that can install packages).
+   - `vst3`: `ok` only on Windows x64 (VST3 plugins usable); `info` everywhere else means VST3 cannot be used here.
    - `instrument downloads`: `https`, or `git` when only github.com is reachable (handled automatically, git must be installed).
      If it is unavailable, use built-in synths (`synth:*`), the engine synth and the user's own instruments, and say that VSCO 2
      needs network access to github.com (on claude.ai: code execution network access "package managers" or wider).
@@ -53,7 +54,13 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
      scanned on this computer. Use the ids it returns, or write `"find:<words>"` in the spec to pick the best match automatically.
    - The user's own instruments: `instruments scan <folder>` registers SFZ files, note-named WAV sets (e.g. `Piano_C4.wav`),
      drum one-shots and graze `Instruments~` libraries as `local:<lib>/<name>`; `instruments add <id> <file.wav> --root C3`
-     adds one sample. VST/AU plugins cannot be hosted: ask the user to export the sound to WAV/SFZ first (see reference).
+     adds one sample.
+   - **VST3 plugins: Windows x64 only.** On Windows, `plugins` lists the installed VST3 instruments and effects and
+     `plugins --info NAME` their parameters; use them as `{"vst3": "<name>"}` instruments and `inserts` effects
+     ([reference/spec.md](reference/spec.md#vst3-plugins-windows-x64-only)). **Everywhere else (macOS, Linux, the claude.ai/Cowork
+     sandbox) VST3 cannot be used at all** (`setup` shows `vst3` unavailable): don't offer it; use the built-in synth, samples and
+     built-in effects, or ask the user to export the plugin's sound to WAV/SFZ (see reference). AU/AAX plugins and Kontakt
+     libraries cannot be loaded on any system.
 4. **Write the spec** to a `.json` file in the user's project or a folder they chose (start from
    `new <path> --template pop|orchestral` or write it directly). Format: [reference/spec.md](reference/spec.md).
    Composition guidance: [reference/composition.md](reference/composition.md).
@@ -82,14 +89,14 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
 | Stems | `--stems` | `stems/<track>.wav`, one per track, plus `stems/regions.wav` for noise regions; same gain as the mix, they add up to it |
 | MIDI | (default) | `<title>.mid` (type 1, tempo map, section markers, GM programs, drums on channel 10) |
 | Sheet music | (default) / `--pdf` | `<title>.musicxml` (opens in MuseScore, Dorico, Finale, Sibelius); `--pdf` needs MuseScore installed. `convert a.musicxml a.pdf` converts later |
-| Unity | `--unity` | `unity/<title>.song.json` + `Samples/` + `CREDITS.md` for com.graze.music's `SongJsonBuilder` |
+| Unity | `--unity` | `unity/<title>.song.json` + `Samples/` + `CREDITS.md` for com.graze.music's `SongJsonBuilder` (+ `<title>.plugin-mod.json` for VST3 instruments) |
 | Audio only / score only | `--no-score` / `--score-only` | skip the other half |
 
 ## Rules
 
 - Use `playbackVersion` 3 (the default; see [reference/spec.md](reference/spec.md) "Playback V3 features"). Use 2 or 1 only to
-  match a song made with an older version. Never promise what the engine lacks: it cannot host VST/AU plugins, and there is no
-  live/MIDI-keyboard playing or vocal synthesis.
+  match a song made with an older version. Never promise what the engine lacks: VST3 plugins only on Windows x64 (never on
+  macOS, Linux or a sandbox), no AU/AAX plugins or Kontakt anywhere, and no live/MIDI-keyboard playing or vocal synthesis.
 - Engine limits per song: 32 engine parts (on V3 one per track, plus additive noise regions), 1024 simultaneous voices, 16 buses,
   10–60000 BPM. `check` reports the part count.
 - In a sandbox the user cannot open your file paths: render with `--out` into the folder your environment shares with the user

@@ -27,6 +27,7 @@ namespace Graze.Presentation.Audio
                 _voices[i] = new Voice { Active = true, Deck = deckId, Layer = part.Layer, Key = note.Key, Instrument = part.Instrument,
                     StartBeat = start - elapsedBeats, EndBeat = start + note.Duration, ReleaseAge = -1, Version = version, Part = part, TakeGain = 1,
                     Bus = version >= MusicPlaybackVersion.V2 ? TrackBus(part) : null }; // a bus exists only for V2 effects, V3 routing or a V3 sidechain key
+                BindPluginVoice(ref _voices[i], part);
                 _voices[i].PartIndex = cue.HasPartAutomation ? Array.IndexOf(cue.Parts, part) : -1;
                 switch (version)
                 {
@@ -58,6 +59,7 @@ namespace Graze.Presentation.Audio
 
         private void MixVoice(ref Voice voice, double gain, ref double left, ref double right)
         {
+            if (voice.PluginDeck != null && voice.PluginSlot >= 0) gain *= 1 - voice.PluginDeck.Wet[voice.PluginSlot];
             switch (voice.Version)
             {
                 case MusicPlaybackVersion.V3: MixVoiceV3(ref voice, gain, ref left, ref right); break;
@@ -247,6 +249,7 @@ namespace Graze.Presentation.Audio
                 _voices[i] = new Voice { Active = true, Deck = deckId, Layer = part.Layer, Key = note.Key, Instrument = instrument, StartBeat = start - elapsedBeats, EndBeat = start + note.Duration,
                     ReleaseAge = -1, Version = MusicPlaybackVersion.V3, Part = part, TakeGain = 1, Bus = TrackBus(part), Pan = part.Pan, Gain = part.Gain * segment.Gain,
                     Region = true, RegionStart = segment.RegionStart, RegionLength = segment.RegionLength, RegionFadeIn = segment.FadeIn, RegionFadeOut = segment.FadeOut };
+                BindPluginVoice(ref _voices[i], part);
                 _voices[i].PartIndex = cue.HasPartAutomation ? Array.IndexOf(cue.Parts, part) : -1;
                 double rate = instrument.SampleRate;
                 if (segment.SecondsPerBeat > 0)
@@ -651,7 +654,7 @@ namespace Graze.Presentation.Audio
             var lanes = _currentCue.MasterAutomation;
             int keyPart = _currentCue.MasterSidechain;
             var m = _currentCue.Mixer;
-            if (lanes == null && keyPart < 0 && _decks[_current].Convolution == null && !m.Limiter && m.Color == null) { MixMasterV2(sum, sumRight, localBeat, out left, out right); return; }
+            if (lanes == null && keyPart < 0 && InsertGraph == null && _decks[_current].Convolution == null && !m.Limiter && m.Color == null) { MixMasterV2(sum, sumRight, localBeat, out left, out right); return; }
             double local = LocalPosition(_currentCue, localBeat);
             if (lanes != null)
             {
@@ -677,6 +680,7 @@ namespace Graze.Presentation.Audio
                 double width = Lane(lanes, MusicAutomationTarget.Width, local, -1);
                 if (width >= 0) { double mid = (sum + sumRight) * .5, side = (sum - sumRight) * .5 * width; sum = mid + side; sumRight = mid - side; }
             }
+            InsertGraph?.Apply(MusicInsertRenderGraph.Master, _samples, ref sum, ref sumRight);
             double startup = Math.Min(1, _samples / (_sampleRate * .02));
             if (m.Limiter)
             {
@@ -796,6 +800,7 @@ namespace Graze.Presentation.Audio
                 int parts = cue != null ? Math.Min(cue.PartCount, buses.Length) : buses.Length;
                 bool routing = cue != null && buses.Length == cue.PartCount + cue.Buses.Length && cue.Buses.Length > 0;
                 bool v3 = cue != null && cue.PlaybackVersion >= MusicPlaybackVersion.V3;
+                if (d == 0) InsertGraph?.Inputs(buses, parts, _samples);
                 // Sidechain keys first: every track's own signal is gathered before any chain runs, so keys never depend on order.
                 if (v3) for (int i = 0; i < parts; i++)
                         if (cue.SidechainKey[i] && buses[i] != null) _keyPeak[d * MusicCue.MaxParts + i] = Math.Max(Math.Abs(buses[i].Left), Math.Abs(buses[i].Right));
@@ -821,6 +826,7 @@ namespace Graze.Presentation.Audio
                             lanes?[(int)MusicAutomationTarget.ChorusMix] != null ? _auto[index + (int)MusicAutomationTarget.ChorusMix] : s.ChorusMix,
                             lanes?[(int)MusicAutomationTarget.ReverbMix] != null ? _auto[index + (int)MusicAutomationTarget.ReverbMix] : s.ReverbMix, key);
                     }
+                    if (d == 0) InsertGraph?.Apply(i, _samples, ref l, ref r);
                     if (!routing || part == null || !part.Routed || cue.PlaybackVersionOf(part) < MusicPlaybackVersion.V3) { sum += l; sumRight += r; continue; }
                     if (part.OutputBus >= 0) { var target = buses[parts + part.OutputBus]; target.Left += l; target.Right += r; }
                     else { sum += l; sumRight += r; }
@@ -849,6 +855,7 @@ namespace Graze.Presentation.Audio
                             Value(MusicAutomationTarget.EchoWet, s.Wet), Value(MusicAutomationTarget.ChorusMix, s.ChorusMix), Value(MusicAutomationTarget.ReverbMix, s.ReverbMix),
                             keyPart < 0 ? -1 : _keyPeak[d * MusicCue.MaxParts + keyPart]);
                     }
+                    if (d == 0) InsertGraph?.Apply(MusicInsertRenderGraph.BusOffset + b, _samples, ref l, ref r);
                     if (definition.VolumeAutomation != null) { double gain = MusicAutomation.Gain(definition.VolumeAutomation.Evaluate(local)); l *= gain; r *= gain; }
                     if (definition.Pan != 0) { l *= definition.Pan > 0 ? 1 - definition.Pan : 1; r *= definition.Pan < 0 ? 1 + definition.Pan : 1; }
                     int output = cue.Buses[b].Output;

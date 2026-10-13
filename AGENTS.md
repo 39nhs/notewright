@@ -9,7 +9,9 @@ headless renderer) renders WAV, stems, MIDI, MusicXML/PDF and Unity song folders
   `engine/` started as a copy of its runtime on 2026-10-01 and was synced once more, at the repository owner's request, to the
   Unity module's part 1 completion (2026-10-10): playback V3 there was released here as V3 and is frozen here. Code for Unity
   (components, editor tools, asset banks), real-time play (live input, MIDI devices, transport, clip launcher, recording, layering),
-  game use (feature profiles, blocks, analyzer taps) and VST3 hosting was left out. Do not merge from or push to the Unity
+  game use (feature profiles, blocks, analyzer taps) was left out. VST3 hosting (instruments, inserts, presets; `engine/Runtime/Plugins/`,
+  the Windows x64 worker in `engine/Native/PluginHost/`) was added back in 0.3.2 at the owner's request as a **Windows x64 only**
+  feature: every other system reports it unavailable, and the skill must say so. Do not merge from or push to the Unity
   repository otherwise, and do not plan work in one repository around the other's progress; a sync happens only when the owner
   asks for one. Never copy private paths, repository names or game content from it into this public repository.
 - `render --unity` writes the song.json format for the Unity package's `SongJsonBuilder`. If engine fields
@@ -23,7 +25,8 @@ headless renderer) renders WAV, stems, MIDI, MusicXML/PDF and Unity song folders
 | `skills/compose-song/` | the skill Claude follows (SKILL.md + reference/) |
 | `notewright.py`, `notewright/` | Python CLI: catalog/sfz/synthkit (instruments), spec (compiler), midi, musicxml, export, engine (build + run) |
 | `engine/Runtime/` | the music engine (C#, namespace `Graze.Presentation.Audio`): `Engine/` playback, `Mixing/` effects and automation, `Song/` song data, `Composing/` patterns and music theory; the few Unity types it names come from `engine/Stubs/UnityStubs.cs` |
-| `engine/Renderer/` | headless renderer: song.json → engine → WAV + JSON report |
+| `engine/Renderer/` | headless renderer: song.json → engine → WAV + JSON report; `Vst3.cs` scans, resolves and prepares VST3 plugins (Windows x64) |
+| `engine/Native/PluginHost/` | the VST3 worker `graze-plugin-host.exe` (Windows x64, the only binary in the repository), its source, build script and license notices; rebuild with `Build.ps1` and update the SHA-256 in its README |
 | `engine/Tests/`, `engine/run-tests.sh` | engine tests incl. playback fingerprints (`bash engine/run-tests.sh [filter]` on Mono, `NOTEWRIGHT_RUNTIME=dotnet` for .NET) |
 | `data/registry.json` | downloadable libraries, pinned (regenerate with `tools/build_vsco2_registry.py`) |
 | `examples/`, `tests/` | example specs (compiled by the tests) and Python tests |

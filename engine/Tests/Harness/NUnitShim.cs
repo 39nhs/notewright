@@ -9,6 +9,7 @@ namespace NUnit.Framework
     [AttributeUsage(AttributeTargets.Method)] public sealed class SetUpAttribute : Attribute { }
     [AttributeUsage(AttributeTargets.Method)] public sealed class TearDownAttribute : Attribute { }
     public sealed class AssertionException : Exception { public AssertionException(string m) : base(m) { } }
+    public sealed class IgnoreException : Exception { public IgnoreException(string m) : base(m) { } }
     public sealed class Constraint
     {
         public Func<object, bool> Check; public string Text; internal object Expected;
@@ -45,6 +46,8 @@ namespace NUnit.Framework
             try { a(); } catch (T e) when (e.GetType() == typeof(T)) { return e; } catch (Exception e) { Fail($"Expected {typeof(T).Name} but got {e.GetType().Name}: {e.Message}", m); }
             Fail($"Expected {typeof(T).Name}", m); return null;
         }
+        public static void Ignore(string why) => throw new IgnoreException(why);
+        public static void Fail(string message) => throw new AssertionException(message);
         public static void DoesNotThrow(Action a, string m = null) { try { a(); } catch (Exception e) { Fail("Unexpected " + e.GetType().Name + ": " + e.Message, m); } }
     }
     public static class CollectionAssert

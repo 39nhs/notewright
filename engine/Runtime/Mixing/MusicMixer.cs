@@ -28,6 +28,8 @@ namespace Graze.Presentation.Audio
         [Range(10, 1000)] public float ReleaseMs = 150;
         [Tooltip("Playback V3+ sidechain: the compressor reacts to this track's own signal (its name/InstrumentId, before its effects) instead of its input — e.g. the kick ducking a bass bus. Empty = off. Needs Compressor on.")]
         public string SidechainTrack = "";
+        [Tooltip("Playback V3+: external VST3 effects after the built-in chain (Windows x64 only). Requires MusicPluginInsertRenderer preparation, never native calls in the audio callback.")]
+        public MusicPluginInsertDefinition[] Inserts = Array.Empty<MusicPluginInsertDefinition>();
         [Range(0, 1)] public float EchoWet;
         [Range(.01f, 2)] public float EchoSeconds = .25f;
         [Tooltip("Playback V3+: echo time in beats, following the tempo (0 = use Echo Seconds). Longer than 2 s is held at 2 s.")]
@@ -149,6 +151,7 @@ namespace Graze.Presentation.Audio
         public readonly bool Compressor, Gate;
         /// <summary>Playback V3+ sidechain key track (InstrumentId), or empty. Resolved to a part index by <see cref="MusicCue"/>.</summary>
         public readonly string SidechainTrack;
+        public readonly MusicPluginInsert[] Inserts;
         public readonly int CrushBits, CrushDownsample;
         public readonly double CrushMix, CrushLevels;
         public readonly bool NoiseGate;
@@ -188,6 +191,7 @@ namespace Graze.Presentation.Audio
             Check(s.GateBeats,.0625,4); Check(s.GateOpen,.049,.951); Check(s.GateDepth,0,1);
             Check(s.CrushBits,0,16); Check(s.CrushDownsample,1,32); Check(s.CrushMix,0,1);
             Check(s.NoiseGateThresholdDb,-80,0); Check(s.NoiseGateRangeDb,-96,0); Check(s.NoiseGateHoldMs,0,500); Check(s.NoiseGateReleaseMs,1,500);
+            Inserts=MusicPluginInsert.Compile(s.Inserts);
             Gain=Math.Pow(10,s.OutputDb/20); LowPass=s.LowPassHz; HighPass=s.HighPassHz;
             Threshold=Math.Pow(10,s.ThresholdDb/20); Ratio=s.Ratio; Attack=s.AttackMs/1000; Release=s.ReleaseMs/1000;
             Wet=s.EchoWet; Delay=s.EchoSeconds; Feedback=s.EchoFeedback; Check(s.EchoBeats,0,8); EchoBeats=s.EchoBeats;

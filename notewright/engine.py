@@ -191,6 +191,7 @@ def render(song_json: Path, out_wav: Path, *, rate=48000, bits=16, start_beat=No
         command += ["--normalize", str(normalize)]
     if stems_dir is not None:
         command += ["--stems", str(stems_dir), "--jobs", str(max(1, jobs))]
+    command += _vst3_options()
     result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
     lines = [l for l in result.stdout.splitlines() if l.startswith("{")]
     if not lines:
@@ -199,6 +200,38 @@ def render(song_json: Path, out_wav: Path, *, rate=48000, bits=16, start_beat=No
     if not report.get("ok"):
         raise EngineError(report.get("error", "render failed"))
     return report
+
+
+def _vst3_options():
+    """Where the renderer finds the VST3 worker and keeps its plugin scan (used only by songs with VST3 plugins, Windows x64)."""
+    return ["--plugin-host", str(paths.PLUGIN_HOST), "--scan-cache", str(paths.home() / "vst3-scan.json")]
+
+
+def _plugin_command(args, rt=None) -> dict:
+    if not paths.vst3_supported():
+        raise EngineError(paths.VST3_UNAVAILABLE)
+    rt = rt or runtime()
+    exe = build(rt=rt)
+    result = subprocess.run(rt["run"] + [str(exe)] + args + _vst3_options(), capture_output=True, text=True, encoding="utf-8")
+    lines = [l for l in result.stdout.splitlines() if l.startswith("{")]
+    if not lines:
+        raise EngineError("renderer produced no report:\n" + (result.stdout + result.stderr)[-4000:])
+    report = json.loads(lines[-1])
+    if not report.get("ok"):
+        raise EngineError(report.get("error", "plugin command failed"))
+    return report
+
+
+def plugins(rescan=False, roots=None) -> dict:
+    """Installed VST3 plugins (Windows x64): {roots, plugins [{name, vendor, version, classId, kind, path}], errors}."""
+    args = ["plugins"] + (["--rescan", "true"] if rescan else []) + (["--vst3-roots", roots] if roots else [])
+    return _plugin_command(args)
+
+
+def plugin_info(name, preset=None, roots=None) -> dict:
+    """One VST3 plugin's parameters (keys for "parameters"/"automation"), latency and state (default, or a .vstpreset's)."""
+    args = ["plugin-info", "--plugin", name] + (["--preset", str(preset)] if preset else []) + (["--vst3-roots", roots] if roots else [])
+    return _plugin_command(args)
 
 
 def _smoke(rt):
@@ -254,6 +287,8 @@ def doctor() -> dict:
         info["runtime"] = (rt["kind"] + " " + rt["version"]).strip()
         info["renderer"] = str(build())
         info["ok"] = True
+        info["vst3"] = ("available (Windows x64): `notewright plugins` lists the installed VST3 plugins" if paths.vst3_supported()
+                        and paths.PLUGIN_HOST.exists() else "not available here: VST3 plugins work only on Windows x64")
     except Exception as error:  # report, don't crash
         info["ok"] = False
         info["error"] = str(error)

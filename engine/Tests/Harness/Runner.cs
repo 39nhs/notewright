@@ -7,7 +7,7 @@ public static class Runner
 {
     public static int Main(string[] args)
     {
-        int pass = 0, fail = 0;
+        int pass = 0, fail = 0, skipped = 0;
         foreach (var type in typeof(Runner).Assembly.GetTypes().Where(t => t.Namespace == "Graze.Tests").OrderBy(t => t.Name))
             foreach (var method in type.GetMethods().Where(m => m.GetCustomAttribute<TestAttribute>() != null || m.GetCustomAttributes<TestCaseAttribute>().Any()))
             foreach (var args0 in method.GetCustomAttributes<TestCaseAttribute>().Any() ? method.GetCustomAttributes<TestCaseAttribute>().Select(c => c.Args) : new[] { (object[])null })
@@ -21,9 +21,10 @@ public static class Runner
                     foreach (var s in type.GetMethods().Where(m => m.GetCustomAttribute<TearDownAttribute>() != null)) s.Invoke(instance, null);
                     pass++;
                 }
+                catch (TargetInvocationException e) when (e.InnerException is IgnoreException) { skipped++; }
                 catch (TargetInvocationException e) { fail++; Console.WriteLine($"FAIL {type.Name}.{method.Name}({(args0 == null ? "" : string.Join(",", args0))}): {e.InnerException.GetType().Name}: {e.InnerException.Message}"); }
             }
-        Console.WriteLine($"passed {pass}, failed {fail}");
+        Console.WriteLine($"passed {pass}, failed {fail}" + (skipped > 0 ? $", skipped {skipped} (VST3 tests need Windows x64 and NOTEWRIGHT_TEST_VST3_ROOTS)" : ""));
         return fail == 0 ? 0 : 1;
     }
 }
