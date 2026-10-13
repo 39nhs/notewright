@@ -63,20 +63,29 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
      libraries cannot be loaded on any system.
 4. **Write the spec** to a `.json` file in the user's project or a folder they chose (start from
    `new <path> --template pop|orchestral` or write it directly). Format: [reference/spec.md](reference/spec.md).
-   Composition guidance: [reference/composition.md](reference/composition.md).
+   Composition guidance: [reference/composition.md](reference/composition.md). Write melodies and hooks yourself; generate the
+   accompaniment from the chords (`{"chords": "Am F C G", "as": "bass"}`, `{"groove": "rock"}`) and use `cycle` for polymeter.
+   A reference the user gives as MIDI: `midi <file>` (tempo, key, chords per bar); as audio: `tempo <file.wav>`.
 5. **Check:** `check <spec>` compiles without rendering (downloads missing instruments) and lists sections, tracks, engine parts
-   and warnings. Fix errors and re-check.
+   and warnings, plus `music`: the key it hears, `issues` (notes outside the key, semitone clashes between the melody and held
+   notes, melody against the chords, ranges) and `notes`/`stats` (kick-bass alignment, sections that repeat exactly, notes per
+   bar, polymeter landing points). Fix errors and every `music.issues` entry you did not intend, then re-check. An error comes
+   with an `example` of the right notation.
 6. **Render:** `render <spec> [--stems] [--pdf] [--unity] [--section NAME | --bars 9-16]`. Default output:
    `<spec folder>/out/<title>/` with `<title>.wav`, `.mid`, `.musicxml`, `report.json` and `<title>.song.json`
    (the engine data). A render runs about 8× faster than real time on `dotnet` (about 4× on .NET Framework or Mono).
    `--stems` adds one pass per track (plus one for noise regions), each about as long as the mix, rendered up to 4 at a time
    (`--jobs`), so use it once for balance and render a section or bar range while iterating. A range render plays what comes before it (so reverb and held notes carry in) and
    stops at its end: the tail (`--tail`, default 2 s) only lets sounding notes, echoes and reverb ring out, and nothing of the
-   next section plays in it; `sections[]` and `stems[].notes` cover only the range.
+   next section plays in it; `sections[]` and `stems[].notes` cover only the range. `--preview` renders at 24 kHz without the
+   score, about twice as fast, for quick passes (`<title>-preview.wav`; render the final without it).
 7. **Mix from the report** (see [reference/mixing.md](reference/mixing.md); use automation, sends and buses rather than
    static levels only): `render.peakDb` / `outputPeakDb`,
    `render.outputRmsDb` (the file's level; `rmsDb` and every other level are before `--normalize`), `sections[].rmsDb` (energy curve), `stems[].rmsDb` (track balance, with `--stems`), `render.droppedNotes`,
-   and `advice`. Adjust gains, pans, effects, master and arrangement, then re-render. Two or three passes are usually enough.
+   `render.lufs` / `truePeakDb`, the frequency `bands` of the mix, each section and each stem, `sections[].width`, `music` and
+   `advice` (it reads the bands, width and loudness for you and names masking between stems). Adjust gains, pans, effects, master
+   and arrangement, then re-render: `changes` shows what moved since the previous render of the same range and which tips
+   were resolved. Two or three passes are usually enough.
 8. **Deliver:** give the user the file paths (WAV, stems, MIDI, MusicXML/PDF, Unity folder), a short description of the
    structure (sections with bar numbers), the instruments and their licenses (VSCO 2 CE is CC0; built-in synths are generated),
    and what to listen for. Ask for feedback in musical terms (e.g. "lead too loud in the chorus?") and iterate.

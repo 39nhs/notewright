@@ -404,6 +404,31 @@ class Render(unittest.TestCase):
         self.assertTrue((unity.parent / "CREDITS.md").exists())
         self.assertTrue(Path(result["files"]["midi"]).exists() and Path(result["files"]["musicxml"]).exists())
 
+    def test_analysis_and_tempo(self):
+        """The report carries loudness, bands and width; the tempo detector finds a rendered song's tempo."""
+        from notewright import cli, engine
+        import io
+        import contextlib
+        folder = Path(tempfile.mkdtemp())
+        data = tiny_spec(bpm=128, sections=[{"name": "a", "bars": 8, "play": {"lead": "tune", "drums": "beat"}}])
+        (folder / "s.json").write_text(json.dumps(data))
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.main(["render", str(folder / "s.json"), "--out", str(folder / "out"), "--stems", "--no-score"])
+        result = json.loads(buffer.getvalue())
+        self.assertEqual(code, 0, result)
+        self.assertLess(result["render"]["lufs"], 0)
+        self.assertEqual(set(result["render"]["bands"]), set(cli.BAND_RANGES))
+        self.assertIn("bands", result["sections"][0])
+        self.assertIn("lufs", result["stems"][0])
+        self.assertIn("music", result)
+        tempo = engine.tempo(result["files"]["wav"])
+        self.assertAlmostEqual(tempo["bpm"], 128, delta=1.5)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cli.main(["render", str(folder / "s.json"), "--out", str(folder / "out"), "--stems", "--no-score"])
+        self.assertIn("no level moved", json.loads(buffer.getvalue())["changes"]["note"])       # same song, same range: nothing moved
+
     def test_setup_checks_and_caches(self):
         """setup verifies a runtime with a test render, saves it, and answers from its cache until the environment changes."""
         from notewright import cli, engine
@@ -629,6 +654,157 @@ class Vst3(unittest.TestCase):
         with self.assertRaises(engine.EngineError) as caught:
             engine.render(folder / "s.song.json", folder / "s.wav")
         self.assertIn("needs Windows x64", str(caught.exception))
+
+
+class Theory(unittest.TestCase):
+    def test_keys_chords_progressions(self):
+        from notewright import theory
+        self.assertEqual(str(theory.Key.parse("F# dorian")), "F# dorian")
+        self.assertEqual(str(theory.Key.parse("C#m")), "C# minor")
+        self.assertEqual(theory.Chord.parse_name("F#m7").pitch_classes, [1, 4, 6, 9])
+        self.assertEqual(theory.Chord.parse_name("C/E").bass, 4)
+        a_minor = theory.Key.parse("A minor")
+        self.assertEqual([str(c) for c, _, _ in theory.progression("i VI III VII", a_minor)], ["Am", "F", "C", "G"])
+        self.assertEqual([str(c) for c, _, _ in theory.progression("I V vi IV V7", theory.Key.parse("G"))], ["G", "D", "Em", "C", "D7"])
+        steps = theory.progression("Am:2 F - G", None, 4, 8)
+        self.assertEqual([(b, n) for _, b, n in steps], [(8, 8), (16, 8), (24, 4)])
+        with self.assertRaises(theory.TheoryError):
+            theory.progression("Am Hm")
+        key, confidence = theory.detect_key([[i, 1, k, 1] for i, k in enumerate([57, 60, 64, 62, 65, 69, 67, 64, 57, 72, 69])])
+        self.assertIn(str(key), ("A minor", "C major"))
+        self.assertEqual(str(theory.name_chord({9: 1, 0: 1, 4: 1})), "Am")
+
+
+class Compose(unittest.TestCase):
+    def test_voicing_bass_arpeggio(self):
+        from notewright import compose, theory
+        steps = theory.progression("C Am F G", None, 4)
+        voiced = compose.voice(steps, 52, 76)
+        self.assertTrue(all(52 <= k <= 76 for v in voiced for k in v))
+        self.assertLessEqual(sum(abs(a - b) for a, b in zip(voiced[0], voiced[1])), 4)           # smooth voice leading
+        walking = compose.bass(steps, "walking", 40, "x.x.x.x.", .5)
+        self.assertEqual(walking[0][2] % 12, 0)
+        self.assertEqual(walking[3][2] % 12, 8)                                                   # approach note into A
+        arp = compose.arpeggio(steps, "upDown", .5)
+        self.assertEqual(len(arp), 32)
+        self.assertEqual(compose.arpeggio(steps, "random", seed=3), compose.arpeggio(steps, "random", seed=3))
+
+    def test_drums_follow_the_meter(self):
+        from notewright import compose
+        four = compose.drums("rock", [(0, 4, 4, 4, None)], fill_every=0, variation=0)
+        self.assertEqual(sorted(n[0] for n in four if n[2] == 36), [0, 2, 2.5])
+        self.assertEqual(sorted(n[0] for n in four if n[2] == 38), [1, 3])
+        seven = compose.drums("rock", [(0, 3.5, 7, 8, None)], fill_every=0, variation=0)            # 7/8 = 2+2+3 eighths
+        self.assertEqual(sorted(n[0] for n in seven if n[2] == 36), [0, 2])
+        self.assertEqual(sorted(n[0] for n in seven if n[2] == 38), [1])
+        self.assertEqual(compose.default_grouping(7, 8), [2, 2, 3])
+        self.assertEqual(compose.default_grouping(13, 16), [4, 3, 3, 3])
+        fill = compose.drums("rock", [(0, 4, 4, 4, None)] * 1 + [(4, 4, 4, 4, None)], fill_every=2)
+        self.assertTrue(any(n[2] == 45 and n[0] >= 7 for n in fill) and any(n[2] == 49 and n[0] == 0 for n in fill))
+
+    def test_polymeter(self):
+        from notewright import compose
+        riff = [[0, .5, 60, 1], [1, .5, 62, 1], [2, 1, 64, 1]]
+        tiled = compose.tile(riff, 2.5, 0, 10)
+        self.assertEqual([n[0] for n in tiled], [0, 1, 2, 2.5, 3.5, 4.5, 5, 6, 7, 7.5, 8.5, 9.5])
+        self.assertEqual(tiled[2][1], .5)                                                         # cut at the cycle end
+        self.assertEqual([n[0] for n in compose.tile(riff, 2.5, 4, 6, phase_origin=0)], [4.5, 5])   # runs on from the song start
+        self.assertEqual(compose.realign(1.25, 4), 20)
+        self.assertEqual(compose.realign(3.5, 4), 28)
+
+
+class Generators(unittest.TestCase):
+    SPEC = {"title": "Gen", "bpm": 120, "meter": 4, "key": "A minor",
+            "instruments": {"pad": {"synthPreset": "Warm pad"}, "bass": {"synthPreset": "Sub bass"}, "drums": "synth:drum-kit",
+                            "lead": {"synthPreset": "Saw lead"}},
+            "tracks": {"pad": "pad", "bass": {"instrument": "bass", "layer": "Bass"}, "drums": "drums", "lead": "lead"},
+            "patterns": {"riff": {"melody": "A4:0.5 C5 E5 G5 E5", "beats": 2.5},
+                         "poly": {"drums": {"kick": "x..x.", "hat": "x.x"}, "step": 0.5, "polymeter": True}},
+            "meterChanges": [{"section": "odd", "numerator": 7, "denominator": 8}],
+            "sections": [{"name": "a", "bars": 4, "play": {"pad": {"chords": "i VI III VII", "rhythm": "x-x.", "step": 1},
+                                                          "bass": {"chords": "i VI III VII", "as": "bass", "style": "rootFifth"},
+                                                          "drums": {"groove": "rock"}, "lead": {"pattern": "riff", "cycle": 2.5}}},
+                         {"name": "b", "bars": 2, "play": {"lead": {"pattern": "riff", "align": "song"}, "drums": "poly"}},
+                         {"name": "odd", "bars": 2, "play": {"drums": {"groove": "breakbeat"}}}]}
+
+    def test_compile(self):
+        song, meta = spec.compile(json.loads(json.dumps(self.SPEC)))
+        tracks = {t["name"]: t for t in meta["tracks"]}
+        self.assertEqual(sorted({n[2] % 12 for n in tracks["pad"]["notes"] if n[0] < 4}), [0, 4, 9])     # Am
+        self.assertEqual([c["chord"] for c in song["chords"]][:4], ["Am", "F", "C", "G"])
+        self.assertEqual([n[0] for n in tracks["lead"]["notes"] if 16 <= n[0] < 18], [16, 16.5, 17, 17.5])  # runs on from beat 15
+        hats = [n[0] for n in tracks["drums"]["notes"] if 16 <= n[0] < 24 and n[2] == 42]
+        self.assertEqual(hats[:4], [16, 17, 17.5, 18.5])                                        # a 1.5-beat hat lane
+        self.assertEqual(meta["sections"][2]["beats"], 7)                                       # two 7/8 bars
+        self.assertEqual(meta["loop"], 31)
+        self.assertEqual({p["cycle"] for p in meta["polymeter"]}, {2.5, 1.5})
+
+    def test_errors(self):
+        for play, message in (({"pad": {"groove": "rock"}}, "drum track"), ({"drums": {"chords": "Am"}}, "pitched"),
+                              ({"pad": {"chords": "Am", "as": "strum"}}, "'as'"), ({"pad": {"chords": "Am", "range": ["C4", "E4"]}}, "octave"),
+                              ({"drums": {"groove": "polka"}}, "groove must be"), ({"lead": {"pattern": "riff", "align": "bar"}}, "'align'")):
+            data = json.loads(json.dumps(self.SPEC))
+            data["sections"] = [{"name": "x", "bars": 1, "play": play}]
+            data.pop("meterChanges")
+            with self.assertRaises(spec.SpecError) as caught:
+                spec.compile(data)
+            self.assertIn(message, str(caught.exception))
+
+
+class MusicCheck(unittest.TestCase):
+    def test_finds_clashes_key_and_repeats(self):
+        from notewright import musiccheck
+        data = tiny_spec(key="C major", tracks={"lead": {"instrument": "lead"}, "pad": {"instrument": "lead", "layer": "Harmony"},
+                                                "drums": {"instrument": "drums"}},
+                         patterns={"beat": {"drums": {"kick": "x...x...x...x..."}}, "tune": {"melody": "F#5:1 C#5 G#5 D#5"},
+                                   "held": {"notes": "0 4 F5"}},
+                         sections=[{"name": "a", "bars": 1, "play": {"lead": "tune", "pad": "held", "drums": "beat"}},
+                                   {"name": "b", "bars": 1, "play": {"lead": "tune", "pad": "held", "drums": "beat"}}])
+        _, meta = spec.compile(data)
+        report = musiccheck.check(meta)
+        self.assertTrue(any("outside C major" in i for i in report["issues"]), report)
+        self.assertTrue(any("semitone clashes" in i and "F#5" in i for i in report["issues"]), report)
+        self.assertTrue(any("exactly the same notes" in n for n in report["notes"]), report)
+        clean = musiccheck.check(spec.compile(tiny_spec(key="C major"))[1])
+        self.assertEqual(clean["issues"], [])
+
+
+class MidiRead(unittest.TestCase):
+    def test_reads_back_a_written_file(self):
+        from notewright import midiread
+        song, meta = spec.compile(Generators.SPEC | {"meterChanges": [], "sections": Generators.SPEC["sections"][:1]})
+        path = Path(tempfile.mkdtemp()) / "g.mid"
+        midi.write(path, meta)
+        info = midiread.summary(path)
+        self.assertEqual((info["bpm"], info["meter"]), (120, "4/4"))
+        roots = [c[:2] if len(c) > 1 and c[1] in "#b" else c[:1] for c in info["chordsPerBar"][:4]]
+        self.assertEqual((roots, info["chordsPerBar"][0]), (["A", "F", "C", "G"], "Am"))      # the riff's E may color F as Fmaj7
+        self.assertTrue(any(t["drums"] for t in info["tracks"]))
+        converted = midiread.to_spec(path)
+        self.assertEqual(converted["chords"][0], {"bar": 1, "chord": "Am"})
+        data = json.loads(json.dumps(converted))
+        data["instruments"] = {alias: ("synth:drum-kit" if alias == "drums" else "synth:pad") for alias in data["instruments"]}
+        song2, meta2 = spec.compile(data)
+        self.assertEqual(sum(len(t["notes"]) for t in meta2["tracks"]), sum(len(t["notes"]) for t in meta["tracks"] if t["notes"]))
+
+
+class Workflow(unittest.TestCase):
+    def test_spectrum_advice_masking_and_changes(self):
+        from notewright import cli
+        mix = [[-20, -20, -25, -40, -50]] * 12
+        pad = {"name": "pad", "kind": "track", "bands": {"low": -40, "lowMid": -22, "mid": -30, "highMid": -50, "high": -60},
+               "bandsPerSecond": [[-40, -22, -30, -50, -60]] * 12}
+        keys = {"name": "keys", "kind": "track", "bands": {"low": -40, "lowMid": -23, "mid": -31, "highMid": -50, "high": -60},
+                "bandsPerSecond": [[-40, -23, -31, -50, -60]] * 12}
+        report = {"bands": {"low": -20, "lowMid": -10, "mid": -25, "highMid": -40, "high": -60}, "bandNames": list(cli.BAND_RANGES),
+                  "bandsPerSecond": mix, "widthPerSecond": [0.01] * 12, "lufs": -24, "truePeakDb": -3, "gainDb": 0}
+        tips = cli._spectrum_advice(report, [pad, keys])
+        for words in ("muddy", "dark", "almost mono", "targetLufs", "mask each other"):
+            self.assertTrue(any(words in t for t in tips), (words, tips))
+        changes = cli._changes({"outputRmsDb": -18, "advice": ["a"]}, {"outputRmsDb": -16}, [], ["b"])
+        self.assertEqual(changes["outputRmsDb"], "-18 → -16 (+2.0)")
+        self.assertEqual((changes["adviceResolved"], changes["adviceNew"]), (["a"], ["b"]))
+        self.assertIn("beat, duration", cli._hint("x: expected 'beat duration pitch[,pitch] [@velocity]'"))
 
 
 class Manifest(unittest.TestCase):

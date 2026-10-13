@@ -21,10 +21,10 @@ namespace GrazePlugin
         {
             try
             {
-                if (args.Length == 0 || (args[0] != "render" && args[0] != "plugins" && args[0] != "plugin-info"))
-                    throw new ArgumentException("usage: renderer render --song song.json --out mix.wav [options] | renderer plugins | renderer plugin-info --plugin NAME");
+                if (args.Length == 0 || (args[0] != "render" && args[0] != "plugins" && args[0] != "plugin-info" && args[0] != "tempo"))
+                    throw new ArgumentException("usage: renderer render --song song.json --out mix.wav [options] | renderer plugins | renderer plugin-info --plugin NAME | renderer tempo --audio FILE.wav");
                 var o = Options(args);
-                var report = args[0] == "plugins" ? ListPlugins(o) : args[0] == "plugin-info" ? PluginInfo(o) : Render(o);
+                var report = args[0] == "plugins" ? ListPlugins(o) : args[0] == "plugin-info" ? PluginInfo(o) : args[0] == "tempo" ? Tempo(o) : Render(o);
                 string json = Json.Write(report);
                 if (o.TryGetValue("report", out var path)) File.WriteAllText(path, json);
                 Console.WriteLine(json);
@@ -114,6 +114,9 @@ namespace GrazePlugin
                     ["plugins"] = vst == null ? new List<object>() : vst.Used.ToList<object>(),
                     ["pluginWarnings"] = vst == null ? new List<object>() : vst.Diagnostics.ToList<object>(),
                     ["perSecond"] = mix.PerSecond.Select(x => (object)new List<object> { Math.Round(Db(x.Rms), 1), Math.Round(Db(x.Peak), 1) }).ToList(),
+                    // Analysis (before --normalize): loudness, frequency bands and stereo width.
+                    ["lufs"] = mix.Analysis.Lufs, ["truePeakDb"] = mix.Analysis.TruePeakDb, ["bandNames"] = Analysis.BandNames.ToList<object>(),
+                    ["bands"] = mix.Analysis.Average(), ["bandsPerSecond"] = mix.Analysis.PerSecond(), ["widthPerSecond"] = mix.Analysis.Width.Select(x => (object)x).ToList(),
                 };
                 if (stems != null)
                 {
@@ -124,7 +127,9 @@ namespace GrazePlugin
                         CopyToWav(temps[t], file, rate, bits, gain);
                         var stem = results[t];
                         parts.Add(new Dictionary<string, object> { ["name"] = names[t - 1], ["kind"] = names[t - 1] == regionStem ? "regions" : "track",
-                            ["file"] = Path.GetFullPath(file), ["notes"] = notes[t], ["rmsDb"] = Db(stem.Rms), ["peakDb"] = Db(stem.Peak), ["peakVoices"] = stem.PeakVoices });
+                            ["file"] = Path.GetFullPath(file), ["notes"] = notes[t], ["rmsDb"] = Db(stem.Rms), ["peakDb"] = Db(stem.Peak), ["peakVoices"] = stem.PeakVoices,
+                            ["lufs"] = stem.Analysis.Lufs, ["bands"] = stem.Analysis.Average(), ["bandsPerSecond"] = stem.Analysis.PerSecond(),
+                            ["widthPerSecond"] = stem.Analysis.Width.Select(x => (object)x).ToList() });
                     }
                     report["parts"] = parts;
                 }
@@ -192,7 +197,7 @@ namespace GrazePlugin
         static string Safe(string name) => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) || c == ' ' ? '_' : c));
         static double Db(double x) => x > 1e-9 ? Math.Round(20 * Math.Log10(x), 2) : -180;
 
-        sealed class Stats { public double Peak, Rms; public long NearFullScale; public int Dropped, PeakVoices; public List<(double Rms, double Peak)> PerSecond = new List<(double, double)>(); }
+        sealed class Stats { public double Peak, Rms; public long NearFullScale; public int Dropped, PeakVoices; public List<(double Rms, double Peak)> PerSecond = new List<(double, double)>(); public Analysis Analysis; }
 
         /// <summary>
         /// Renders one second at a time into a raw float32 stereo file (playOnce). With VST3 plugins the song is prepared offline first
@@ -210,7 +215,7 @@ namespace GrazePlugin
                 int n = (int)Math.Min(rate, skip);
                 engine.RenderStereo(n == rate ? block : new float[n * 2]);
             }
-            var stats = new Stats();
+            var stats = new Stats { Analysis = new Analysis(rate, frames / (double)rate) };
             double energy = 0;
             var bytes = new byte[rate * 8];
             using (var w = new BinaryWriter(new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20)))
@@ -234,6 +239,7 @@ namespace GrazePlugin
                     energy += secondEnergy;
                     stats.Peak = Math.Max(stats.Peak, secondPeak);
                     stats.PerSecond.Add((Math.Sqrt(secondEnergy / (n * 2)), secondPeak));
+                    stats.Analysis.Add(buffer, n);
                 }
             }
             stats.Rms = Math.Sqrt(energy / (frames * 2));

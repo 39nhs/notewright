@@ -50,8 +50,23 @@ recognized; the reference's own harmony is what makes a listener name it on firs
    reference, and in which bars of the new song.
 
 If you are not sure of the reference's actual chords, say so and ask the user for them (or for a chord chart) instead of
-guessing; a wrong progression is no longer recognizable. When the user asks for something else (an homage in mood only, a
-cover, an original with no borrowing), do that instead.
+guessing; a wrong progression is no longer recognizable. If they have it as a MIDI file, `midi <file>` reads the tempo,
+meter, key and the chord of every bar (`progression`) from it, and `midi <file> --spec ref.json` turns it into a spec to study or
+rework; a recording (WAV) gives its tempo and first downbeat with `tempo <file.wav>`.
+When the user asks for something else (an homage in mood only, a cover, an original with no borrowing), do that instead.
+
+## Accompaniment from chords
+
+Write the hook and melody yourself; let generators write the accompaniment from the chords (fewer wrong notes, faster to change):
+`{"chords": "Am F C G"}` for a voiced pad or keys, `"as": "bass"` for the bass line, `"as": "arp"` for an arpeggio, and
+`{"groove": "rock"}` for drums ([spec.md](spec.md#generated-parts-chords-bass-arpeggio-drum-groove)). Change the progression in one
+place by giving every generator the same string. `check` then reports melody notes that clash with the chords.
+
+## Odd meters and polymeter
+
+Odd bars: `meterChanges` with a `grouping` (`7/8` = `2+2+3`); the drum `groove` and the score follow the grouping. Polymeter: a
+riff with its own `cycle` over steady bars (`"cycle": 2.5` against 4/4 lines up every 5 bars) or drum lanes of different lengths
+(`"polymeter": true`); end the section where the cycles meet (`check` lists the points).
 
 ## Voicing and ranges (MIDI keys)
 

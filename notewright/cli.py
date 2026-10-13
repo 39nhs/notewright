@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import __version__, catalog, engine, export, midi, musicxml, paths, spec as specs, synthkit
+from . import __version__, catalog, engine, export, midi, midiread, musiccheck, musicxml, paths, spec as specs, synthkit
 from .notes import name as note_name
 
 EXAMPLES = paths.PLUGIN_DIR / "examples"
@@ -218,6 +218,34 @@ def cmd_plugins(args):
     return 0
 
 
+def cmd_midi(args):
+    """A MIDI file as a reference: tempo, meter, key, tracks and the chord of every bar; --spec writes it as an editable spec."""
+    info = midiread.summary(args.file)
+    if args.spec:
+        target = Path(args.spec)
+        if target.exists() and not args.force:
+            raise SystemExit(f"{target} exists (use --force to overwrite)")
+        target.write_text(json.dumps(midiread.to_spec(args.file), indent=1, ensure_ascii=False), encoding="utf-8")
+        info["spec"] = str(target.resolve())
+    _print(dict(info, ok=True))
+    return 0
+
+
+def cmd_tempo(args):
+    """Tempo and beats of a recording, and how to line it up in a spec."""
+    report = engine.tempo(Path(args.file).resolve(), args.beats_per_bar, args.min, args.max)
+    beats = report.pop("beatSeconds")
+    report["firstBeats"] = beats[:16]
+    if report["confidence"] < .3:
+        report["note"] = "low confidence: the recording has no steady pulse the detector can follow; check the tempo by ear or tap it"
+    report["spec"] = {"bpm": report["bpm"], "audio clip": {"file": args.file, "bar": 1, "sourceStart": report["downbeatSeconds"],
+                                                         "sourceBpm": report["bpm"], "warp": "Tempo"}}
+    if report["tempoChanges"]:
+        report["spec"]["tempo"] = [{"beat": c["beat"], "bpm": c["bpm"]} for c in report["tempoChanges"]]
+    _print(report)
+    return 0
+
+
 def _root(value):
     from .notes import note_number
     key = note_number(str(value))
@@ -244,11 +272,23 @@ def _compile(path, auto_fetch=True):
     return specs.compile(data, spec_dir=Path(path).resolve().parent, auto_fetch=auto_fetch)
 
 
+def _bar_of(beat, meta):
+    """1-based bar number at a beat (following meter changes); fractional inside a bar."""
+    import bisect
+    starts = meta.get("barStarts") or []
+    if not starts:
+        return beat / meta["meter"] + 1
+    i = max(0, bisect.bisect_right(starts, beat + 1e-9) - 1)
+    length = (starts[i + 1] if i + 1 < len(starts) else meta["loop"]) - starts[i]
+    return i + 1 + ((beat - starts[i]) / length if length > 0 else 0)
+
+
 def _summary(song, meta):
     seconds = _seconds_at(meta["loop"], meta["bpm"], meta["tempo"])
-    return {"title": meta["title"], "bpm": meta["bpm"], "meter": meta["meter"], "bars": meta["loop"] / meta["meter"],
+    return {"title": meta["title"], "bpm": meta["bpm"], "meter": meta["meter"], "bars": len(meta.get("barStarts") or []) or meta["loop"] / meta["meter"],
             "seconds": round(seconds, 2), "playbackVersion": song["playbackVersion"],
-            "sections": [{"name": s["name"], "bar": s["beat"] / meta["meter"] + 1, "bars": s["beats"] / meta["meter"]} for s in meta["sections"]],
+            "sections": [{"name": s["name"], "bar": _bar_of(s["beat"], meta), "bars": _bar_of(s["beat"] + s["beats"], meta) - _bar_of(s["beat"], meta)}
+                         for s in meta["sections"]],
             "tracks": [{"name": t["name"], "instrument": t["instrument"], "notes": len(t["notes"]),
                         "parts": sum(1 for p in meta["parts"] if p["track"] == t["name"])} for t in meta["tracks"]],
             "engineParts": len(song["parts"]), "regions": len(song["regions"]), "warnings": meta["warnings"]}
@@ -256,13 +296,117 @@ def _summary(song, meta):
 
 def cmd_check(args):
     song, meta = _compile(args.spec, auto_fetch=not args.no_fetch)
-    _print(dict(_summary(song, meta), ok=True))
+    _print(dict(_summary(song, meta), ok=True, music=musiccheck.check(meta)))
     return 0
+
+
+BAND_RANGES = {"low": "20-120 Hz", "lowMid": "120-500 Hz", "mid": "500 Hz-2 kHz", "highMid": "2-6 kHz", "high": "above 6 kHz"}
+
+
+def _power_mean(values):
+    values = [v for v in values if v is not None and v > -150]
+    return round(10 * math.log10(sum(10 ** (v / 10) for v in values) / len(values)), 1) if values else None
+
+
+def _spectrum_advice(report, parts):
+    """Tips from the frequency bands, the stereo width, loudness and masking between stems (render analysis)."""
+    tips = []
+    bands = report.get("bands") or {}
+    if bands and bands.get("mid", -180) > -150:
+        mid = bands["mid"]
+        if bands["low"] - mid > 14:
+            tips.append(f"the low end (20-120 Hz) is {bands['low'] - mid:.0f} dB above the mids: boomy; lower the bass/kick or high-pass "
+                        "pads and keys (HighPassHz 150-250)")
+        elif bands["low"] - mid < -4:
+            tips.append("little low end (20-120 Hz is below the mids): fine for acoustic or orchestral music; for pop, rock or electronic "
+                        "it sounds thin: give the bass more level or a sub, or a fuller kick")
+        if bands["lowMid"] - mid > 6:
+            tips.append(f"120-500 Hz is {bands['lowMid'] - mid:.0f} dB above 500 Hz-2 kHz: muddy; high-pass or EQ-cut pads, keys and "
+                        "guitars around 250-400 Hz (Eq EqLowDb/EqMidDb)")
+        if bands["high"] - mid < -26:
+            tips.append("very little above 6 kHz: dark (fine for a soft or orchestral piece); for more air: brighter hats/cymbals, a "
+                        "brighter synth (CutoffHz) or EqHighDb +3 on the master")
+        elif bands["high"] - mid > -2:
+            tips.append("strong above 6 kHz: harsh or hissy; lower hats/cymbals or EqHighDb, or DeEsser on the master")
+    widths = [w for w in report.get("widthPerSecond") or [] if w is not None]
+    if widths:
+        width = sum(widths) / len(widths)
+        if width < .05:
+            tips.append(f"the mix is almost mono (width {width:.2f}): pan tracks apart (keys, pads, doubles left/right), add Chorus or Reverb")
+        elif width > .9:
+            tips.append(f"the mix is very wide (width {width:.2f}): out-of-phase sounds vanish in mono; narrow StereoWidth or pans")
+    lufs, peak = report.get("lufs"), report.get("truePeakDb")
+    if lufs is not None and not report.get("targetLufs") and lufs < -20 and not report.get("gainDb"):
+        tips.append(f"integrated loudness {lufs:.1f} LUFS is quiet next to streamed music (about -14): set \"targetLufs\": -14 in the spec")
+    if peak is not None and peak + (report.get("gainDb") or 0) > -.5:
+        tips.append(f"true peak {peak + (report.get('gainDb') or 0):.1f} dBTP after normalizing: keep it under -1 (master Limiter, "
+                    "LimiterCeilingDb -1) so encoders don't clip")
+    # masking: two stems whose main band is the same, both carrying it at a similar level for a good part of the song
+    mix_seconds = report.get("bandsPerSecond") or []
+    tracks = [p for p in parts if p.get("kind", "track") == "track" and p.get("bandsPerSecond")]
+    names = report.get("bandNames") or list(BAND_RANGES)
+    main = {p["name"]: max(names, key=lambda n: p["bands"].get(n, -180)) for p in tracks}
+    masking = []
+    for b, band in enumerate(names):
+        if band in ("highMid", "high"):
+            continue
+        for i, a in enumerate(tracks):
+            for c in tracks[i + 1:]:
+                if main[a["name"]] != band or main[c["name"]] != band:
+                    continue
+                both = shared = 0
+                for second, mix in enumerate(mix_seconds):
+                    if second >= len(a["bandsPerSecond"]) or second >= len(c["bandsPerSecond"]):
+                        break
+                    x, y, m = a["bandsPerSecond"][second][b], c["bandsPerSecond"][second][b], mix[b]
+                    if x > m - 6 and y > m - 6:
+                        both += 1
+                        if abs(x - y) < 4:
+                            shared += 1
+                if shared >= 8 and shared >= .5 * both:
+                    quieter = a if a["bands"][band] < c["bands"][band] else c
+                    other = c if quieter is a else a
+                    fix = ("high-pass it (HighPassHz 120-200) so the bass owns the lows" if band == "low" else
+                           "EQ-cut it there (Eq: EqLowDb/EqMidDb -3..-6), move it an octave, or give each its own section")
+                    masking.append((shared, f"'{a['name']}' and '{c['name']}' both sit mainly in {BAND_RANGES[band]} at the same level for "
+                                            f"{shared} s: they mask each other; for '{quieter['name']}' {fix}, or pan it away from '{other['name']}'"))
+    tips += [text for _, text in sorted(masking, reverse=True)[:3]]
+    return tips
+
+
+def _changes(old, new, sections, advice):
+    """What moved since the previous render of the same range (levels in dB; only moves of 0.5 dB or more)."""
+    out = {}
+
+    def delta(label, a, b):
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)) and abs(b - a) >= .5:
+            out[label] = f"{a:g} → {b:g} ({b - a:+.1f})"
+    for key in ("outputRmsDb", "outputPeakDb", "lufs"):
+        delta(key, old.get(key), new.get(key))
+    for band in (new.get("bands") or {}):
+        delta(f"bands.{band}", (old.get("bands") or {}).get(band), new["bands"][band])
+    before = {s["name"]: s for s in old.get("sections") or []}
+    for s in sections:
+        if s["name"] in before:
+            delta(f"section {s['name']}", before[s["name"]].get("rmsDb"), s.get("rmsDb"))
+    stems = {p["name"]: p for p in old.get("parts") or []}
+    for p in new.get("parts") or []:
+        if p["name"] in stems:
+            delta(f"stem {p['name']}", stems[p["name"]].get("rmsDb"), p.get("rmsDb"))
+    same = lambda text: re.sub(r"-?\d+(\.\d+)?", "#", text)          # the same tip with other numbers is not new
+    before_tips, after_tips = {same(a) for a in old.get("advice") or []}, {same(a) for a in advice}
+    gone = [a for a in old.get("advice") or [] if same(a) not in after_tips]
+    added = [a for a in advice if same(a) not in before_tips]
+    if gone:
+        out["adviceResolved"] = gone
+    if added:
+        out["adviceNew"] = added
+    return out or {"note": "no level moved by 0.5 dB or more since the previous render of this range"}
 
 
 def _advice(report, meta, sections, per_second=None, tail=0.0):
     """Mixing tips from the report. per_second (full renders only) also checks the start and end for a lead-in and a ring-out."""
-    tips = []
+    tips = _spectrum_advice(report, report.get("parts") or [])
     for warning in report.get("pluginWarnings") or []:
         tips.append(f"VST3: {warning} — the track played its fallback (or the insert was bypassed); check the plugin and its settings")
     if report.get("droppedNotes"):
@@ -325,7 +469,10 @@ def cmd_render(args):
         raise specs.SpecError(f"this spec uses VST3 plugins ({', '.join(meta['vst3'])}). {paths.VST3_UNAVAILABLE} "
                               "--score-only still writes MIDI and MusicXML.")
     if not args.score_only:
-        wav = out_dir / f"{slug}{'-' + _slug(args.section) if args.section else ''}{'-bars-' + args.bars if args.bars else ''}.wav"
+        if args.preview:                     # quick listen while iterating: half the sample rate (about twice as fast), 16-bit
+            args.rate, args.bits, args.no_score = args.rate or 24000, args.bits or 16, True
+        wav = out_dir / f"{slug}{'-' + _slug(args.section) if args.section else ''}{'-bars-' + args.bars if args.bars else ''}" \
+                        f"{'-preview' if args.preview else ''}.wav"
         normalize = args.normalize if args.normalize is not None else output.get("normalize")
         jobs = args.jobs or min(4, os.cpu_count() or 1)
         if args.stems:
@@ -348,22 +495,38 @@ def cmd_render(args):
             window = per_second[max(0, int(a)):max(0, int(math.ceil(b)))]
             if window:
                 power = sum(10 ** (r / 10) for r, _ in window) / len(window)
-                sections.append({"name": s["name"], "rmsDb": round(10 * math.log10(power), 1) if power > 0 else None,
-                                 "peakDb": max(p for _, p in window)})
-        (out_dir / "report.json").write_text(json.dumps(dict(report, perSecond=per_second, sections=sections), indent=1), encoding="utf-8")
+                entry = {"name": s["name"], "rmsDb": round(10 * math.log10(power), 1) if power > 0 else None, "peakDb": max(p for _, p in window)}
+                spectrum = (report.get("bandsPerSecond") or [])[max(0, int(a)):max(0, int(math.ceil(b)))]
+                if spectrum:
+                    entry["bands"] = {name: _power_mean([row[i] for row in spectrum]) for i, name in enumerate(report["bandNames"])}
+                widths = (report.get("widthPerSecond") or [])[max(0, int(a)):max(0, int(math.ceil(b)))]
+                if widths:
+                    entry["width"] = round(sum(widths) / len(widths), 2)
+                sections.append(entry)
+        range_key = {"section": args.section, "bars": args.bars, "preview": bool(args.preview)}
+        previous = None
+        try:
+            previous = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
         result["files"]["wav"] = report["out"]
         result["render"] = {k: report[k] for k in ("seconds", "rate", "bits", "playbackVersion", "peakVoices", "voiceLimit", "droppedNotes",
-                                                    "peakDb", "rmsDb", "gainDb", "outputPeakDb", "outputRmsDb", "nearFullScale")}
+                                                    "peakDb", "rmsDb", "gainDb", "outputPeakDb", "outputRmsDb", "nearFullScale", "lufs",
+                                                    "truePeakDb", "bands") if k in report}
         result["sections"] = sections
         if report.get("plugins"):
             result["plugins"] = report["plugins"]
         if report.get("pluginWarnings"):
             result["pluginWarnings"] = report["pluginWarnings"]
         if report.get("parts"):
-            result["stems"] = [{k: p[k] for k in ("name", "kind", "file", "notes", "rmsDb", "peakDb")} for p in report["parts"]]
+            result["stems"] = [{k: p[k] for k in ("name", "kind", "file", "notes", "rmsDb", "peakDb", "lufs", "bands") if k in p} for p in report["parts"]]
         full = start is None and length is None
         result["advice"] = _advice(report, meta, sections, per_second if full else None,
                                    args.tail if args.tail is not None else output.get("tail", 2.0))
+        if previous and previous.get("range") == range_key:
+            result["changes"] = _changes(previous, report, sections, result["advice"])
+        (out_dir / "report.json").write_text(json.dumps(dict(report, perSecond=per_second, sections=sections, range=range_key,
+                                                             advice=result["advice"]), indent=1), encoding="utf-8")
         result["files"]["report"] = str(out_dir / "report.json")
     if not args.no_score:
         mid = out_dir / f"{slug}.mid"
@@ -381,8 +544,29 @@ def cmd_render(args):
         result["files"]["unity"] = str(export.unity_folder(song, meta, out_dir / "unity", slug))
     result["files"]["songJson"] = str(song_path)
     result["summary"] = _summary(song, meta)
+    result["music"] = musiccheck.check(meta)
     _print(result)
     return 0
+
+
+HINTS = [
+    (r"expected 'beat duration pitch", '"notes": "0 1 C4 | 1 0.5 E4,G4 @0.8 | 2 2 kick"  (beat, duration, pitch[,pitch], optional @velocity)'),
+    (r"is not a note|is not a pitch", '"C4", "F#3", "Bb2", "60", or a drum name like "kick", "snare", "hat"'),
+    (r"a point is|expected a list of points", '[{"bar": 1, "value": -30}, {"bar": 3, "value": 0, "curve": "smooth"}]  or  [[0, -30], [8, 0, "linear"]]'),
+    (r"give 'bars' \(or 'beats'\)", '{"name": "verse", "bars": 8, "play": {"drums": "beat", "bass": "bassline"}}'),
+    (r"unknown chord", '"chords": "Am F C G7"  or numerals in the song key: "i VI III VII", "I V vi IV"; ":2" = two slots, "-" holds'),
+    (r"unknown pattern", '"patterns": {"riff": {"melody": "A4:0.5 C5 E5 r:0.5"}}  then play it with "riff"'),
+    (r"'groove'", '{"groove": "rock", "fill": 4}  on a drum track; grooves: rock, fourOnFloor, halfTime, breakbeat, metal, shuffle'),
+    (r"unknown key '", '"key": "A minor"  (or "F# dorian", "Bb", "C#m")'),
+    (r"unknown keys \[", "check the spelling: valid keys are listed in the message"),
+]
+
+
+def _hint(message):
+    for pattern, example in HINTS:
+        if re.search(pattern, message):
+            return example
+    return None
 
 
 def cmd_convert(args):
@@ -424,11 +608,21 @@ def main(argv=None):
     p.add_argument("--stems", action="store_true", help="also render each track alone into stems/<track>.wav")
     p.add_argument("--jobs", type=int, help="stems rendered at the same time (default: CPU cores, at most 4)")
     p.add_argument("--section", help="render only this section")
+    p.add_argument("--preview", action="store_true", help="quick listen: 24 kHz 16-bit, no score, about twice as fast (<title>-preview.wav)")
     p.add_argument("--bars", help="render only bars A-B (1-based, inclusive)")
     p.add_argument("--no-score", action="store_true", help="skip the MIDI and MusicXML files")
     p.add_argument("--score-only", action="store_true", help="skip audio; write MIDI and MusicXML")
     p.add_argument("--pdf", action="store_true", help="also convert the score to PDF with MuseScore")
     p.add_argument("--unity", action="store_true", help="also write a Unity SongJsonBuilder folder (song.json + Samples + CREDITS)")
+    p = sub.add_parser("midi", help="read a MIDI file: tempo, meter, key, tracks, chords per bar; --spec writes an editable spec")
+    p.add_argument("file")
+    p.add_argument("--spec", help="also write the MIDI file as a spec to this path")
+    p.add_argument("--force", action="store_true")
+    p = sub.add_parser("tempo", help="tempo, beats and first downbeat of a WAV recording")
+    p.add_argument("file")
+    p.add_argument("--beats-per-bar", type=int, default=4)
+    p.add_argument("--min", type=float, default=60, help="lowest BPM to consider")
+    p.add_argument("--max", type=float, default=200, help="highest BPM to consider")
     p = sub.add_parser("plugins", help="installed VST3 instruments and effects (Windows x64 only); --info NAME lists a plugin's parameters")
     p.add_argument("--info", metavar="NAME", help="load this plugin (name or class ID): parameter keys, values 0-1, latency, state")
     p.add_argument("--preset", help="with --info: read this .vstpreset into the state (for 'state' in the spec)")
@@ -444,9 +638,13 @@ def main(argv=None):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     args = parser.parse_args(argv)
     handlers = {"doctor": cmd_doctor, "setup": cmd_setup, "instruments": cmd_instruments, "new": cmd_new, "check": cmd_check, "render": cmd_render,
-                "convert": cmd_convert, "plugins": cmd_plugins}
+                "convert": cmd_convert, "plugins": cmd_plugins, "midi": cmd_midi, "tempo": cmd_tempo}
     try:
         return handlers[args.command](args)
     except (specs.SpecError, catalog.CatalogError, engine.EngineError, RuntimeError, FileNotFoundError, ValueError) as error:
-        _print({"ok": False, "error": str(error)})
+        out = {"ok": False, "error": str(error)}
+        hint = _hint(str(error))
+        if hint:
+            out["example"] = hint
+        _print(out)
         return 2

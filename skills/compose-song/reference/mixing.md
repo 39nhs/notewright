@@ -18,6 +18,21 @@ play as sound get their own stem (`kind: "regions"`, `stems/regions.wav`); track
 levels show the track alone. Regions with `MasterFilter` process the whole mix and so act on every stem.
 | Voices | `render.droppedNotes` | must be 0 (lower `release`, thin dense parts) |
 
+**What the mix sounds like (analysis, before `--normalize`):**
+
+| Measure | Where | Reading |
+|---|---|---|
+| Loudness | `render.lufs` (integrated, BS.1770), `render.truePeakDb` | streaming pop about -14 LUFS, orchestral/ambient -18…-23; true peak under -1 dBTP |
+| Frequency balance | `render.bands`, `sections[].bands`, `stems[].bands` | dB in `low` 20-120 Hz, `lowMid` 120-500, `mid` 500-2k, `highMid` 2-6k, `high` 6k+ |
+| Stereo width | `sections[].width` | side/mid: 0 = mono, 0.2-0.5 typical, above 0.9 phasey |
+
+Pop/rock/electronic starting points relative to `mid`: `low` +4…+12 dB, `lowMid` -2…+4, `highMid` -14…-6, `high` -24…-10.
+Orchestral and acoustic music sit lower in the lows and highs. `advice` turns these into tips: boomy or thin lows, mud
+(120-500 Hz), dark or harsh highs, a mono or over-wide image, quiet loudness, true-peak overs, and **masking** — two stems whose
+main energy sits in the same band at the same level (fix by high-passing or EQ-cutting the less important one, moving it an
+octave, panning them apart or giving them different sections). Each render also reports `changes` against the previous render
+of the same range: which levels and bands moved, which tips were resolved and which are new.
+
 Typical stem RMS relative to the loudest stem (genre-dependent starting points): kick and bass 0 to -3 dB, snare -2 to -5,
 lead/vocal-like melody -2 to -6, chords/keys -6 to -10, pads -10 to -16, hats/percussion -12 to -20, effects quieter still.
 For orchestral music: melody instrument loudest, strings pad -4 to -8, harp/arpeggios -6 to -10, timpani short peaks.
