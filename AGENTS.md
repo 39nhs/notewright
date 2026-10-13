@@ -23,9 +23,9 @@ headless renderer) renders WAV, stems, MIDI, MusicXML/PDF and Unity song folders
 |---|---|
 | `.claude-plugin/` | plugin manifest + marketplace (keep `version` in plugin.json current) |
 | `skills/compose-song/` | the skill Claude follows (SKILL.md + reference/) |
-| `notewright.py`, `notewright/` | Python CLI: catalog/sfz/synthkit (instruments), spec (compiler), midi, musicxml, export, engine (build + run) |
+| `notewright.py`, `notewright/` | Python CLI: catalog/sfz/synthkit (instruments), spec (compiler), theory + compose (keys, chords, generated parts, polymeter; the engine's MusicTheory and MusicComposeAssist in Python so specs compile without the renderer), musiccheck (music checks), midi + midiread (MIDI out/in), musicxml, export, engine (build + run) |
 | `engine/Runtime/` | the music engine (C#, namespace `Graze.Presentation.Audio`): `Engine/` playback, `Mixing/` effects and automation, `Song/` song data, `Composing/` patterns and music theory; the few Unity types it names come from `engine/Stubs/UnityStubs.cs` |
-| `engine/Renderer/` | headless renderer: song.json → engine → WAV + JSON report; `Vst3.cs` scans, resolves and prepares VST3 plugins (Windows x64) |
+| `engine/Renderer/` | headless renderer: song.json → engine → WAV + JSON report; `Analysis.cs` (bands, width, LUFS of every render; it only reads the audio), `Tempo.cs` (tempo/beat detection of a WAV), `Vst3.cs` scans, resolves and prepares VST3 plugins (Windows x64) |
 | `engine/Native/PluginHost/` | the VST3 worker `graze-plugin-host.exe` (Windows x64, the only binary in the repository), its source, build script and license notices; rebuild with `Build.ps1` and update the SHA-256 in its README |
 | `engine/Tests/`, `engine/run-tests.sh` | engine tests incl. playback fingerprints (`bash engine/run-tests.sh [filter]` on Mono, `NOTEWRIGHT_RUNTIME=dotnet` for .NET) |
 | `data/registry.json` | downloadable libraries, pinned (regenerate with `tools/build_vsco2_registry.py`) |

@@ -9,7 +9,7 @@ import math
 import re
 from pathlib import Path
 
-from . import catalog, paths
+from . import catalog, compose, paths, theory
 from .notes import DRUMS, name as note_name, note_number, number
 
 MAX_PARTS = 32                       # MusicCue.MaxParts: instrument parts + additive noise regions
@@ -159,17 +159,22 @@ def _melody(text, where):
     return notes, beat
 
 
-def _grid(lanes, step, where):
+def _grid(lanes, step, where, per_lane=None):
+    """Drum grid lanes → notes. With per_lane (a list) each lane's own (notes, length) is also kept, for polymeter lanes."""
     notes, length = [], 0.0
     for lane, line in lanes.items():
         key = _pitch(lane, f"{where} lane")
         cells = [c for c in line if c not in " |"]
+        own = []
         for i, c in enumerate(cells):
             if c in GRID:
-                notes.append([i * step, step, key, GRID[c]])
+                own.append([i * step, step, key, GRID[c]])
             elif c not in ".-_":
                 raise SpecError(f"{where} lane '{lane}': unknown step '{c}' (X x o g hit, . - _ rest)")
+        notes += own
         length = max(length, len(cells) * step)
+        if per_lane is not None and cells:
+            per_lane.append((own, len(cells) * step))
     return notes, length
 
 
@@ -186,30 +191,102 @@ def _pattern(spec, where, meter):
         m, length = _melody(spec["melody"], where)
         notes += m
         natural = max(natural, length)
+    lanes = [] if spec.get("polymeter") else None
     if "drums" in spec:
-        g, length = _grid(spec["drums"], _num(str(spec.get("step", .25)), where), where)
+        g, length = _grid(spec["drums"], _num(str(spec.get("step", .25)), where), where, lanes)
         notes += g
         natural = max(natural, length)
-    unknown = set(spec) - {"notes", "melody", "drums", "step", "beats", "bars"}
+    unknown = set(spec) - {"notes", "melody", "drums", "step", "beats", "bars", "polymeter"}
     if unknown:
-        raise SpecError(f"{where}: unknown keys {sorted(unknown)} (use notes / melody / drums, step, beats or bars)")
+        raise SpecError(f"{where}: unknown keys {sorted(unknown)} (use notes / melody / drums, step, beats or bars, polymeter)")
+    if spec.get("polymeter") and "drums" not in spec:
+        raise SpecError(f"{where}: 'polymeter': true loops each drum lane at its own length; it needs 'drums' lanes")
     if "beats" in spec:
         beats = float(spec["beats"])
     elif "bars" in spec:
         beats = float(spec["bars"]) * meter
     else:
         beats = max(meter, math.ceil(natural / meter - 1e-9) * meter)
-    return {"notes": notes, "beats": beats}
+    out = {"notes": notes, "beats": beats}
+    if lanes:
+        out["lanes"] = lanes
+    return out
 
 
 # ---------- arrangement ----------
 
-def _place(play, patterns, track, where, start, length, meter):
+GENERATOR_KEYS = {"chords", "as", "per", "range", "voices", "rhythm", "step", "style", "register", "order", "rate", "octaves", "gate", "seed",
+                  "velocity", "transpose", "octave", "groove", "fill", "variation"}
+PLACE_KEYS = {"pattern", "patterns", "transpose", "octave", "velocity", "offset", "repeat", "cycle", "align"}
+
+
+def _key_range(value, where, default):
+    if value is None:
+        return default
+    if not isinstance(value, list) or len(value) != 2:
+        raise SpecError(f"{where}: 'range' is [lowest, highest], e.g. [\"C3\", \"G4\"]")
+    low, high = _pitch(str(value[0]), where), _pitch(str(value[1]), where)
+    if high - low < 12:
+        raise SpecError(f"{where}: 'range' must span at least an octave")
+    return low, high
+
+
+def _generate(play, track, where, start, length, meter, ctx):
+    """Generated notes: {"chords": "Am F C G", "as": "chords"|"bass"|"arp", ...} or {"groove": "rock", ...} (drum tracks)."""
+    unknown = set(play) - GENERATOR_KEYS
+    if unknown:
+        raise SpecError(f"{where}: unknown keys {sorted(unknown)} (valid: {', '.join(sorted(GENERATOR_KEYS))})")
+    try:
+        if "groove" in play:
+            if not track["drums"]:
+                raise SpecError(f"{where}: 'groove' writes drums; use it on a drum track (chords go to pitched tracks)")
+            notes = compose.drums(str(play["groove"]), ctx["bars"](start, start + length), int(play.get("fill", 4)),
+                                  int(play.get("seed", 1)), float(play.get("variation", .2)))
+        else:
+            if track["drums"]:
+                raise SpecError(f"{where}: 'chords' generate pitched parts; a drum track takes 'groove'")
+            per = float(play.get("per", meter))
+            steps = theory.progression(str(play["chords"]), ctx["key"], per, start)
+            span = steps[-1][1] + steps[-1][2] - start
+            cycle = list(steps)                    # the progression repeats to fill the section
+            while span > 0 and steps[-1][1] + steps[-1][2] < start + length - 1e-9:
+                shift = steps[-1][1] + steps[-1][2] - start
+                steps += [(c, b + shift, n) for c, b, n in cycle]
+            steps = [(c, b, min(n, start + length - b)) for c, b, n in steps if b < start + length - 1e-9]
+            kind = play.get("as", "chords")
+            velocity = float(play.get("velocity", .7 if kind != "bass" else .85))
+            if kind == "chords":
+                low, high = _key_range(play.get("range"), where, (52, 76))
+                notes = compose.chords(steps, low, high, str(play.get("rhythm", "")), float(play.get("step", .5)), velocity, int(play.get("voices", 0)))
+            elif kind == "bass":
+                register = _pitch(str(play.get("register", "E2")), where)
+                notes = compose.bass(steps, str(play.get("style", "root")), register, str(play.get("rhythm", "")), float(play.get("step", 1)), velocity)
+            elif kind in ("arp", "arpeggio"):
+                low, high = _key_range(play.get("range"), where, (60, 84))
+                notes = compose.arpeggio(steps, str(play.get("order", "up")), float(play.get("rate", .25)), int(play.get("octaves", 1)),
+                                         float(play.get("gate", .8)), low, high, int(play.get("seed", 1)), velocity)
+            else:
+                raise SpecError(f"{where}: 'as' must be chords, bass or arp")
+            ctx["chords"] += [(b, n, c) for c, b, n in steps]
+    except (theory.TheoryError, compose.ComposeError) as error:
+        raise SpecError(f"{where}: {error}") from None
+    shift = 0 if track["drums"] else int(play.get("transpose", 0)) + 12 * int(play.get("octave", 0))
+    return [[b, d, k + shift, v] for b, d, k, v in notes if b < start + length - 1e-9]
+
+
+def _place(play, patterns, track, where, start, length, meter, ctx=None):
     """Notes for one track in one section. play: pattern name, list of names (played in order, then repeated), inline
-    pattern dict/string, or {pattern|patterns, transpose, octave, velocity, offset, repeat}."""
+    pattern dict/string, {pattern|patterns, transpose, octave, velocity, offset, repeat, cycle, align}, or a generator
+    ({"chords": ..., "as": ...} / {"groove": ...})."""
+    ctx = ctx if ctx is not None else {"key": None, "bars": lambda a, b: _bars(a, b, meter, []), "chords": [], "polymeter": []}
+    if isinstance(play, dict) and ("chords" in play or "groove" in play) and "pattern" not in play and "patterns" not in play:
+        return _generate(play, track, where, start, length, meter, ctx)
     options = {}
     if isinstance(play, dict) and ("pattern" in play or "patterns" in play):
         options = play
+        unknown = set(play) - PLACE_KEYS
+        if unknown:
+            raise SpecError(f"{where}: unknown keys {sorted(unknown)} (valid: {', '.join(sorted(PLACE_KEYS))})")
         play = play.get("pattern", play.get("patterns"))
     sequence = play if isinstance(play, list) else [play]
     resolved = []
@@ -226,6 +303,33 @@ def _place(play, patterns, track, where, start, length, meter):
     gain = float(options.get("velocity", 1.0))
     offset = float(options.get("offset", 0))
     repeat = options.get("repeat", True)
+    align = options.get("align", "section")
+    if align not in ("section", "song"):
+        raise SpecError(f"{where}: 'align' is section (the cycle restarts with the section) or song (it runs on from the song start)")
+    lanes = len(resolved) == 1 and resolved[0].get("lanes")
+    if "cycle" in options or lanes or align == "song":
+        # Polymeter: the riff (or each drum lane) repeats at its own length regardless of bars.
+        if len(resolved) != 1:
+            raise SpecError(f"{where}: 'cycle' and polymeter lanes take one pattern")
+        cycle = float(_num(str(options["cycle"]), where)) if "cycle" in options else resolved[0]["beats"]
+        if cycle <= 0:
+            raise SpecError(f"{where}: 'cycle' must be > 0 beats")
+        origin = 0.0 if align == "song" else start + offset
+        try:
+            parts = lanes if lanes and "cycle" not in options else [(resolved[0]["notes"], cycle)]
+            notes = []
+            for lane_notes, lane_cycle in parts:
+                notes += compose.tile(lane_notes, lane_cycle, start + offset, start + length if repeat else start + offset + lane_cycle, origin)
+        except compose.ComposeError as error:
+            raise SpecError(f"{where}: {error}") from None
+        bar = ctx["bars"](start, start + 1e-6)
+        bar_beats = bar[0][1] if bar else meter
+        for _, lane_cycle in parts:
+            whole = lambda x: abs(x - round(x)) < 1e-6
+            if not whole(lane_cycle / bar_beats) and not whole(bar_beats / lane_cycle):     # neither divides the other: polymeter
+                ctx["polymeter"].append({"where": where, "cycle": lane_cycle, "bar": bar_beats,
+                                         "realignBeats": round(compose.realign(lane_cycle, bar_beats), 4)})
+        return [[b, d, k + (0 if track["drums"] else shift), min(1.0, v * gain)] for b, d, k, v in notes]
     notes, cursor, cycle = [], offset, 0
     while cursor < length - 1e-9:
         for p in resolved:
@@ -240,6 +344,21 @@ def _place(play, patterns, track, where, start, length, meter):
         if not repeat or all(p["beats"] <= 0 for p in resolved):
             break
     return notes
+
+
+def _bars(a, b, meter, changes):
+    """Bars starting in [a, b) as (start, length, numerator, denominator, groups or None), following meter changes
+    [(beat, numerator, denominator, groups)] (sorted; each on a bar line)."""
+    out, beat, n, d, groups = [], 0.0, meter, 4, None
+    pending = sorted(changes)
+    while beat < b - 1e-9 and len(out) < 100000:
+        while pending and pending[0][0] <= beat + 1e-9:
+            _, n, d, groups = pending.pop(0)
+        length = n * 4.0 / d
+        if beat >= a - 1e-9:
+            out.append((beat, length, n, d, groups))
+        beat += length
+    return out
 
 
 def _bar_beat(item, meter, sections, where):
@@ -679,8 +798,29 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
     for name, p in (spec.get("patterns") or {}).items():
         patterns[name] = _pattern(p, f"pattern '{name}'", meter)
 
-    # sections → notes
+    # sections → notes (generators read the key and the bars; meter changes resolve as sections appear)
     sections, beat = [], 0.0
+    song_key = None
+    if spec.get("key"):
+        try:
+            song_key = theory.Key.parse(str(spec["key"]))
+        except theory.TheoryError as error:
+            raise SpecError(f"key: {error}") from None
+
+    def meter_changes():
+        out = []
+        for i, m in enumerate(spec.get("meterChanges") or []):
+            try:
+                at = _bar_beat(m, meter, sections, f"meterChanges[{i}]")
+            except SpecError:
+                continue                    # in a section not reached yet
+            n, d = int(m["numerator"]), int(m["denominator"])
+            groups = [int(g) for g in str(m["grouping"]).split("+")] if m.get("grouping") else None
+            if groups is not None and sum(groups) != n:
+                raise SpecError(f"meterChanges[{i}]: grouping {m['grouping']} must add up to {n}")
+            out.append((at, n, d, groups))
+        return out
+    ctx = {"key": song_key, "bars": lambda a, b: _bars(a, b, meter, meter_changes()), "chords": [], "polymeter": []}
     for i, s in enumerate(spec.get("sections") or []):
         label = s.get("name", f"section{i + 1}")
         if "bars" not in s and "beats" not in s:
@@ -691,17 +831,22 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
             raise SpecError(f"section '{label}': unknown keys {sorted(unknown)}")
         for _ in range(int(s.get("repeat", 1))):
             sections.append({"name": label, "beat": beat, "beats": length})
+            if "bars" in s and spec.get("meterChanges") and float(s["bars"]) == int(float(s["bars"])):
+                # Bars follow the meter changes (a 7/8 bar is 3.5 beats).
+                length = sum(b[1] for b in ctx["bars"](beat, beat + float(s["bars"]) * 64)[:int(float(s["bars"]))])
+                sections[-1]["beats"] = length
             for track, play in (s.get("play") or {}).items():
                 if track not in tracks:
                     raise SpecError(f"section '{label}': unknown track '{track}' (tracks: {', '.join(tracks)})")
-                tracks[track]["notes"] += _place(play, patterns, tracks[track], f"section '{label}' track '{track}'", beat, length, meter)
+                tracks[track]["notes"] += _place(play, patterns, tracks[track], f"section '{label}' track '{track}'", beat, length, meter, ctx)
             beat += length
     for track, text in (spec.get("notes") or {}).items():          # free notes at absolute beats
         if track not in tracks:
             raise SpecError(f"notes: unknown track '{track}'")
         tracks[track]["notes"] += _pattern(text, f"notes.{track}", meter)["notes"]
     loop = beat if sections else max([n[0] + n[1] for t in tracks.values() for n in t["notes"]] + [meter])
-    loop = math.ceil(loop / meter - 1e-9) * meter
+    if not (sections and spec.get("meterChanges")):        # with meter changes the sections already end on a bar line
+        loop = math.ceil(loop / meter - 1e-9) * meter
     if not sections:
         sections = [{"name": "song", "beat": 0.0, "beats": loop}]
 
@@ -762,6 +907,11 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
         extra["keys"] = [{"beat": _bar_beat(k, meter, sections, f"keys[{i}]"), "key": str(k["key"])} for i, k in enumerate(spec["keys"])]
     if spec.get("chords"):
         extra["chords"] = [{"beat": _bar_beat(c, meter, sections, f"chords[{i}]"), "chord": str(c["chord"])} for i, c in enumerate(spec["chords"])]
+    elif ctx["chords"]:                      # chords written by generators become the song's chord track (metadata)
+        seen = {}
+        for b, _, c in sorted(ctx["chords"], key=lambda x: x[0]):
+            seen.setdefault(round(b, 6), str(c))
+        extra["chords"] = [{"beat": b, "chord": c} for b, c in sorted(seen.items())]
     if spec.get("meterChanges"):
         extra["meter"] = [dict({"beat": _bar_beat(m, meter, sections, f"meterChanges[{i}]"), "numerator": int(m["numerator"]),
                                 "denominator": int(m["denominator"])}, **({"grouping": m["grouping"]} if m.get("grouping") else {}))
@@ -964,9 +1114,12 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
             "tracks": [{"name": t["name"], "instrument": t["entry"]["id"], "tags": t["entry"].get("tags", []), "drums": t["drums"],
                         "layer": t["layer"], "notes": t["notes"], "mute": bool(t.get("mute")), "program": t.get("program"),
                         "clef": t.get("clef"), "score": t.get("score", True), "pan": float(t.get("pan", 0)),
-                        "gain": float(t.get("gain", .5))} for t in tracks.values()],
+                        "gain": float(t.get("gain", .5)),
+                        "range": [min(r["lo"] for r in t["entry"]["regions"]), max(r["hi"] for r in t["entry"]["regions"])]
+                        if t["entry"].get("regions") and not t["drums"] else None} for t in tracks.values()],
             "parts": part_meta, "credits": list(credits.values()), "warnings": warnings, "output": spec.get("output") or {},
-            "vst3": vst3_uses}
+            "barStarts": [b[0] for b in ctx["bars"](0, loop)],
+            "vst3": vst3_uses, "polymeter": ctx["polymeter"], "chords": extra.get("chords", []), "keyName": str(song_key) if song_key else None}
     return song, meta
 
 

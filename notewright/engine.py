@@ -210,6 +210,11 @@ def _vst3_options():
 def _plugin_command(args, rt=None) -> dict:
     if not paths.vst3_supported():
         raise EngineError(paths.VST3_UNAVAILABLE)
+    return _command(args, rt)
+
+
+def _command(args, rt=None) -> dict:
+    """Runs a renderer action (plugins, plugin-info, tempo) and returns its JSON report."""
     rt = rt or runtime()
     exe = build(rt=rt)
     result = subprocess.run(rt["run"] + [str(exe)] + args + _vst3_options(), capture_output=True, text=True, encoding="utf-8")
@@ -232,6 +237,11 @@ def plugin_info(name, preset=None, roots=None) -> dict:
     """One VST3 plugin's parameters (keys for "parameters"/"automation"), latency and state (default, or a .vstpreset's)."""
     args = ["plugin-info", "--plugin", name] + (["--preset", str(preset)] if preset else []) + (["--vst3-roots", roots] if roots else [])
     return _plugin_command(args)
+
+
+def tempo(audio, beats_per_bar=4, min_bpm=60, max_bpm=200) -> dict:
+    """Tempo, beats and the first bar start of a WAV recording (the engine's MusicBeatDetector)."""
+    return _command(["tempo", "--audio", str(audio), "--beats-per-bar", str(beats_per_bar), "--min", str(min_bpm), "--max", str(max_bpm)])
 
 
 def _smoke(rt):

@@ -105,6 +105,8 @@ next `@`); a suffix `E5:1@0.9` sets it for that note only:
 - Velocity is 0-1 (or 1-127).
 - Length: `"bars"` or `"beats"`; otherwise the notes' end rounded up to whole bars.
 - A plain string is accepted as a pattern: events if it starts with two numbers, otherwise melody.
+- `"polymeter": true` (drum grids): each lane loops at its own length instead of all lanes stopping at the longest one, e.g.
+  `{"drums": {"kick": "x..x.", "hat": "x.x"}, "step": 0.5, "polymeter": true}` (a 2.5-beat kick figure against a 1.5-beat hat).
 
 ## sections
 
@@ -118,6 +120,45 @@ next `@`); a suffix `E5:1@0.9` sets it for that note only:
 ```
 Sections run back to back; the song length is their sum. `repeat` duplicates the section (each copy is a separate section
 in the score/markers). Tracks not named in `play` are silent there. `offset` delays the pattern (beats) inside the section.
+With `meterChanges`, a section's `bars` follow the meter (two 7/8 bars = 7 beats).
+
+### Generated parts: chords, bass, arpeggio, drum groove
+
+Instead of a pattern, a track can play a generator. It writes ordinary notes (they show up in MIDI, the score and `check`), so use
+it for accompaniment and keep writing melodies and hooks yourself.
+```jsonc
+"play": {
+  "pad":   {"chords": "i VI III VII", "rhythm": "x-x.", "step": 1, "range": ["E3", "G4"], "voices": 4},
+  "bass":  {"chords": "Am F C G", "as": "bass", "style": "rootFifth", "rhythm": "x.x.", "step": 0.5, "register": "E2"},
+  "arp":   {"chords": "Am F C G", "as": "arp", "order": "upDown", "rate": 0.25, "octaves": 2, "range": ["A3", "E5"]},
+  "drums": {"groove": "rock", "fill": 4, "variation": 0.2, "seed": 1}
+}
+```
+- `chords`: chord names (`Am F#m7 C/E Bbmaj7 G7 Dsus4 Edim A5`) or numerals in the song `key` (`I V vi IV`, `i bVI bVII`, `V7`,
+  `ii7`); `Am:2` lasts two slots, `-` holds the previous chord one more slot. A slot is `per` beats (default one bar). The
+  progression repeats to fill the section. Written chords also fill the song's chord track (`chords`), which `check` compares
+  melodies against.
+- `as`: `chords` (default; voiced with smooth voice leading inside `range`, default E3-E5; `voices` 2-6 = notes per chord),
+  `bass` (`style` root / rootFifth / octave / walking, near `register`, default E2) or `arp` (`order` up / down / upDown / downUp /
+  random / asVoiced, a note every `rate` beats across `octaves`, `gate` 0-1 = note length share, `range` default C4-C6).
+- `rhythm` + `step`: when the notes play — `x` accent, `o` soft, `-` hold, `.` rest, one character per `step` beats
+  (no rhythm = held for the whole chord). `velocity`, `transpose`, `octave` as for patterns.
+- `groove` (drum tracks): `rock fourOnFloor halfTime breakbeat metal shuffle`. Plain n/4 bars use a 16-step groove; other bars (7/8,
+  5/4 grouped 3+2, 13/16 …) accent each count group of the meter (`meterChanges` `grouping`, default 7/8 = 2+2+3). A crash opens
+  every `fill` bars and their last bar ends in a fill (0 = none); `variation` 0-1 adds seeded ghost notes and hat dynamics.
+
+### Polymeter
+
+A riff that repeats at its own length, regardless of bars (math rock, minimalism, Afro-Cuban layering):
+```jsonc
+"lead":  {"pattern": "riff", "cycle": 2.5},                  // a 2.5-beat (5/8) riff over 4/4: meets the downbeat again every 20 beats
+"synth": {"pattern": "seq", "cycle": "7/4", "align": "song"} // the cycle runs on across sections instead of restarting
+```
+- `cycle`: the riff length in beats (default: the pattern's own `beats`); notes past the cycle are cut. Patterns whose `beats` are not
+  whole bars already repeat at their length; `cycle` overrides it.
+- `align`: `section` (default: restart at each section) or `song` (count from the song start, so the riff continues seamlessly).
+- `check` lists every polymeter part and when it lines up with the bar again (`music.stats.polymeter`); end sections on those
+  points (or let a fill cover the seam) for a satisfying landing.
 
 ## Playback V3 features
 

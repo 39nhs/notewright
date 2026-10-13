@@ -1,0 +1,62 @@
+// notewright example: accompaniment generated from chords, a 5/8 riff over 4/4 (polymeter), a 7/8 section whose drum groove
+// follows the 2+2+3 grouping, and drum lanes of different lengths. Reference: skills/compose-song/reference/spec.md
+{
+  "title": "Prime Numbers",
+  "bpm": 138,
+  "meter": 4,
+  "key": "E minor",
+
+  "instruments": {
+    "pad": {"synthPreset": "Warm pad"},
+    "bass": {"synthPreset": "Acid bass"},
+    "pluck": {"synthPreset": "Pluck"},
+    "lead": {"synthPreset": "Square lead"},
+    "drums": "synth:drum-kit"
+  },
+
+  "tracks": {
+    "drums": {"instrument": "drums", "gain": 0.5},
+    "bass":  {"instrument": "bass", "layer": "Bass", "gain": 0.4, "release": 0.08},
+    "pad":   {"instrument": "pad", "layer": "Harmony", "gain": 0.14, "pan": -0.25, "attack": 0.3, "release": 1.5,
+              "effects": {"HighPassHz": 350, "LowPassHz": 4000}},
+    "pluck": {"instrument": "pluck", "layer": "Harmony", "gain": 0.16, "pan": 0.3, "release": 0.3,
+              "effects": {"EchoWet": 0.2, "EchoBeats": 0.75, "EchoFeedback": 0.3}},
+    "lead":  {"instrument": "lead", "gain": 0.16, "pan": 0.1, "release": 0.12, "effects": {"LowPassHz": 5000}}
+  },
+
+  "patterns": {
+    // five eighths, repeated at its own length over 4/4 bars: back on the downbeat every 5 bars (20 beats)
+    "riff": {"melody": "E5:0.5 D5 A4 E5 D5", "beats": 2.5},
+    // a 3-beat kick figure and a 2-beat hat figure that meet every 6 beats
+    "poly": {"drums": {"kick": "x..x..", "snare": "....x...", "hat": "x.x."}, "step": 0.5, "polymeter": true}
+  },
+
+  "meterChanges": [
+    {"section": "odd", "numerator": 7, "denominator": 8, "grouping": "2+2+3"},
+    {"section": "lock", "numerator": 4, "denominator": 4}
+  ],
+
+  "sections": [
+    {"name": "intro", "bars": 2, "play": {"pad": {"chords": "Em:2", "voices": 4}}},
+    {"name": "riff", "bars": 10, "play": {
+      "pad":   {"chords": "i VI III VII", "rhythm": "x---x-x-", "step": 0.5, "range": ["A3", "E5"]},
+      "bass":  {"chords": "i VI III VII", "as": "bass", "style": "rootFifth", "rhythm": "x.x.x.xo", "step": 0.5},
+      "drums": {"groove": "rock", "fill": 4},
+      "lead":  {"pattern": "riff", "cycle": 2.5}}},
+    {"name": "odd", "bars": 8, "play": {
+      "pad":   {"chords": "Em C", "per": 7, "voices": 4},
+      "pluck": {"chords": "Em C", "per": 7, "as": "arp", "order": "upDown", "rate": 0.5, "octaves": 2},
+      "bass":  {"chords": "Em C", "per": 7, "as": "bass", "rhythm": "x.x.x..", "step": 0.5},
+      "drums": {"groove": "breakbeat", "fill": 4}}},
+    {"name": "lock", "bars": 6, "play": {
+      "pad":   {"chords": "i VI III VII"},
+      "drums": "poly",
+      "lead":  {"pattern": "riff", "align": "song"}}},
+    {"name": "outro", "bars": 2, "play": {"pad": {"chords": "Em:2", "voices": 3, "range": ["E3", "E5"]}}}
+  ],
+
+  "masterAutomation": {"volume": [{"bar": 1, "value": -30}, {"bar": 3, "value": 0, "curve": "smooth"},
+                                  {"section": "outro", "value": 0}, {"section": "outro", "bar": 3, "value": -40}]},
+  "master": {"Compressor": true, "ThresholdDb": -16, "Ratio": 2.5},
+  "targetLufs": -14
+}
