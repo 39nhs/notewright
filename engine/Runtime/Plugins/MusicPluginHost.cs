@@ -73,10 +73,26 @@ namespace Graze.Presentation.Audio
                 { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true } };
             process.ErrorDataReceived += (s, e) => { if (e.Data != null) lock (errors) { if (errors.Length > 12000) errors.Remove(0, errors.Length - 8000); errors.AppendLine(e.Data); } };
             process.EnableRaisingEvents = true; process.Exited += (s, e) => Exited?.Invoke();
-            lock (StartupGate) if (!process.Start()) throw new IOException("Cannot start the VST3 worker.");
+            lock (StartupGate)
+            {
+                // .NET Framework writes the console input encoding's preamble into a redirected stdin when the process starts: a UTF-8 BOM
+                // when the console code page is 65001, which corrupts the binary protocol. The same code page without a preamble avoids it.
+                try { var console = Console.InputEncoding; if (console.CodePage == 65001 && console.GetPreamble().Length > 0) Console.InputEncoding = new UTF8Encoding(false); }
+                catch (Exception e) when (e is IOException || e is ArgumentException || e is PlatformNotSupportedException || e is System.Security.SecurityException) { }
+                if (!process.Start()) throw new IOException("Cannot start the VST3 worker.");
+            }
             process.BeginErrorReadLine(); input = new BinaryReader(process.StandardOutput.BaseStream); output = new BinaryWriter(process.StandardInput.BaseStream);
             watchdog = new Timer(s => Abort(), null, Timeout.Infinite, Timeout.Infinite);
             try { using (var reply = Call(0, null)) { ProtocolVersion = reply.ReadInt32(); if (ProtocolVersion < 2 || ProtocolVersion > 4) throw new IOException("Incompatible VST3 worker (needs protocol 2, 3 or 4)."); } }
+            catch (IOException e)
+            {
+                // Say why the worker stopped answering: its exit code and what it wrote to stderr.
+                string exit = "";
+                try { if (process.WaitForExit(2000)) { process.WaitForExit(); exit = " (exit code " + process.ExitCode + ")"; } } catch (InvalidOperationException) { }
+                string log = Diagnostic.Trim();
+                Dispose();
+                throw new IOException("The VST3 worker did not answer: " + e.Message + exit + (log.Length > 0 ? " " + log : ""), e);
+            }
             catch { Dispose(); throw; }
         }
         internal static void WriteText(BinaryWriter writer, string text) { byte[] bytes = Encoding.UTF8.GetBytes(text); writer.Write(bytes.Length); writer.Write(bytes); }
