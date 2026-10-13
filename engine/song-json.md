@@ -165,6 +165,17 @@ Master limiter (playback V3+): `"Limiter": true, "LimiterInputDb": 6, "LimiterCe
 lowpass, highpass, echo, chorus, reverb, pitch, modulation, brightness, gate, crush, drive, driveMix, width, rotary (effect targets need
 `trackEffects` and the stage on). `"disabled": true` keeps one without playing it.
 
-Not in this engine (the Unity package has them): live input effects (`liveEffects`), external VST3 instruments and effect inserts
-(`Inserts`), clip-launcher scenes, take lanes and freeze. A song.json that uses `Inserts` is rejected (unknown field).
+VST3 plugins (playback V3, **Windows x64 only**; on any other system the renderer stops with an error instead of rendering):
+- A part's `"plugin"` makes it a VST3 instrument: `{"name": "Surge XT"}` or `{"classId": "<32 hex digits>"}` (optional `"vendor"`,
+  `"version"`), `"state"` (base64 VC2! state), `"parameters"` (`{key: 0..1}`), `"automation"` (`{key: [beat, value, curve, ...]}`),
+  `"gain"`, `"pan"`, `"transpose"`, `"velocityCurve"`, `"voices"` (`mono`/`poly`), `"outputs"` (`[{"bus": 1, "instrument": "<part>"}]`:
+  extra output buses into other parts). The part's own sound (sample, zones or synth; the Init synth when it has none) plays only
+  if the plugin cannot run, and the report lists it in `pluginWarnings`.
+- `"Inserts"` in `master`, part `effects` (with `"trackEffects": true`) or bus `effects`: at most 4 VST3 effects after the built-in
+  chain, each `{"ClassId" or "Name", "Vendor", "Version", "Mix", "Bypass", "State", "Parameters": [{"Key", "Value", "Points": [{"Beat", "Value", "Curve"}]}]}`.
+- The renderer finds plugins in the trusted VST3 folders (`--vst3-roots` / `NOTEWRIGHT_VST3_PATH`, default the standard ones) with the
+  worker `engine/Native/PluginHost/graze-plugin-host.exe` (`--plugin-host`); names resolve to class IDs there. A song never names a file.
+- The Unity package reads instruments from a plugin mod (`render --unity` writes `<title>.plugin-mod.json`) and `Inserts` by class ID.
+
+Not in this engine (the Unity package has them): live input effects (`liveEffects`), clip-launcher scenes, take lanes and freeze.
 

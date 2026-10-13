@@ -236,7 +236,7 @@ class Spec(unittest.TestCase):
         body = text[text.index("public sealed class MusicMixerSettings"):]
         body = body[:body.index("\n    }\n")]
         fields = {n.strip() for m in re.finditer(r"public\s+(?!const)[\w.\[\]<>]+\s+([\w, ]+?)\s*(?:=[^;]*)?;", body) for n in m.group(1).split(",")}
-        self.assertEqual(spec.MIXER_FIELDS, fields - {"CabinetImpulse"})
+        self.assertEqual(spec.MIXER_FIELDS, fields - {"CabinetImpulse", "Inserts"})   # VST3 inserts are written as "inserts"
 
     def test_zone_split_and_budget(self):
         folder = Path(tempfile.mkdtemp())
@@ -513,6 +513,122 @@ class Render(unittest.TestCase):
         parallel = render("four", 4)
         for name in stems:
             self.assertEqual(Path(stems[name]["file"]).read_bytes(), Path(parallel[name]["file"]).read_bytes(), name)
+
+
+def vst3_spec(**extra):
+    base = tiny_spec(instruments={"surge": {"vst3": "Surge XT", "parameters": {"cutoff": .4}, "voices": "mono", "fallback": "saw lead"},
+                                  "drums": "synth:drum-kit"},
+                     tracks={"lead": {"instrument": "surge", "plugin": {"automation": {"cutoff": [{"bar": 1, "value": .2}, [8, .9, "smooth"]]}},
+                                      "effects": {"inserts": [{"vst3": "0123456789abcdef0123456789ABCDEF", "mix": .5}]}},
+                             "drums": {"instrument": "drums"}},
+                     master={"inserts": [{"vst3": "Some Reverb", "automation": {"mix": [[0, .1], [4, .6]]}, "parameters": {"size": .7}}]})
+    base.update(extra)
+    return base
+
+
+class Vst3(unittest.TestCase):
+    """VST3 plugins compile on every system; rendering them works only on Windows x64 and fails clearly elsewhere."""
+
+    def test_compiles_to_plugin_and_inserts(self):
+        song, meta = spec.compile(vst3_spec())
+        lead = next(p for p in song["parts"] if p["name"] == "lead")
+        self.assertEqual(lead["plugin"], {"name": "Surge XT", "parameters": {"cutoff": .4}, "voices": "mono",
+                                          "automation": {"cutoff": [0.0, .2, 0, 8.0, .9, 2]}})
+        self.assertEqual(lead["synthPreset"], "Saw lead")
+        self.assertTrue(lead["trackEffects"])
+        self.assertEqual(lead["effects"]["Inserts"][0]["ClassId"], "0123456789ABCDEF0123456789ABCDEF")
+        reverb = song["master"]["Inserts"][0]
+        self.assertEqual((reverb["Name"], reverb["ClassId"], reverb["Mix"]), ("Some Reverb", "", 1.0))
+        self.assertEqual(reverb["Parameters"][0], {"Key": "size", "Value": .7})
+        self.assertEqual(reverb["Parameters"][1]["Points"], [{"Beat": 0.0, "Value": .1, "Curve": 0}, {"Beat": 4.0, "Value": .6, "Curve": 0}])
+        self.assertEqual(meta["vst3"], ["master inserts", "track 'lead'", "track 'lead'.effects inserts"])
+        from notewright import paths
+        self.assertEqual(any("Windows x64" in w for w in meta["warnings"]), not paths.vst3_supported())
+
+    def test_errors(self):
+        cases = [
+            (vst3_spec(playbackVersion=2), "playbackVersion 3"),
+            (vst3_spec(tracks={"lead": {"instrument": "drums", "plugin": {"parameters": {"a": .1}}}, "drums": {"instrument": "drums"}}), "VST3 instrument"),
+            (vst3_spec(master={"inserts": [{"vst3": "X", "parameters": {"a": 2}}]}), "0-1"),
+            (vst3_spec(master={"inserts": [{"vst3": "X"}] * 5}), "at most 4"),
+            (vst3_spec(master={"inserts": [{"vst3": "X", "wet": 1}]}), "unknown keys"),
+            (vst3_spec(instruments={"surge": {"vst3": ""}, "drums": "synth:drum-kit"}), "name or class ID"),
+        ]
+        for data, message in cases:
+            with self.assertRaises(spec.SpecError) as caught:
+                spec.compile(data)
+            self.assertIn(message, str(caught.exception))
+
+    def test_unity_export_moves_instruments_to_a_plugin_mod(self):
+        from notewright import export
+        song, meta = spec.compile(vst3_spec())
+        folder = Path(tempfile.mkdtemp())
+        path = export.unity_folder(song, meta, folder, "t")
+        self.assertFalse(any("plugin" in p for p in json.loads(path.read_text(encoding="utf-8"))["parts"]))
+        mod = json.loads((folder / "t.plugin-mod.json").read_text(encoding="utf-8"))
+        self.assertEqual((mod["format"], mod["targets"][0]["instrument"], mod["targets"][0]["plugin"]), ("graze-plugin-mod/1", "lead", {"name": "Surge XT"}))
+        self.assertIn("todo", mod)
+
+    def test_render_off_windows_says_why(self):
+        from notewright import cli, paths
+        if paths.vst3_supported():
+            self.skipTest("this machine can host VST3 plugins")
+        import io
+        import contextlib
+        folder = Path(tempfile.mkdtemp())
+        (folder / "s.json").write_text(json.dumps(vst3_spec()))
+        for argv, code in ((["render", str(folder / "s.json"), "--out", str(folder / "out")], 2), (["plugins"], 1)):
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                self.assertEqual(cli.main(argv), code)
+            self.assertIn("only on Windows x64", json.loads(buffer.getvalue())["error"])
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.assertEqual(cli.main(["render", str(folder / "s.json"), "--out", str(folder / "out"), "--score-only"]), 0)
+
+    @unittest.skipUnless(_engine_available(), "needs the .NET SDK, Mono (Linux/macOS) or .NET Framework (Windows)")
+    def test_worker_starts_on_windows(self):
+        """On Windows x64 the packaged worker starts and answers; a folder without plugins lists none and a missing plugin is named."""
+        from notewright import cli, paths
+        if not paths.vst3_supported():
+            self.skipTest("VST3 needs Windows x64")
+        import io
+        import contextlib
+        empty = tempfile.mkdtemp()
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.main(["plugins", "--roots", empty, "--rescan"])
+        result = json.loads(buffer.getvalue())
+        self.assertEqual(code, 0, result)
+        self.assertEqual((result["worker"], result["plugins"]), ("protocol 4", []))
+        folder = Path(tempfile.mkdtemp())
+        song, _ = spec.compile(vst3_spec())
+        (folder / "s.song.json").write_text(json.dumps(song))
+        from notewright import engine
+        old = os.environ.get("NOTEWRIGHT_VST3_PATH")
+        os.environ["NOTEWRIGHT_VST3_PATH"] = empty
+        try:
+            with self.assertRaises(engine.EngineError) as caught:
+                engine.render(folder / "s.song.json", folder / "s.wav")
+            self.assertIn("is not installed", str(caught.exception))
+        finally:
+            if old is None:
+                os.environ.pop("NOTEWRIGHT_VST3_PATH")
+            else:
+                os.environ["NOTEWRIGHT_VST3_PATH"] = old
+
+    @unittest.skipUnless(_engine_available(), "needs the .NET SDK, Mono (Linux/macOS) or .NET Framework (Windows)")
+    def test_renderer_refuses_plugins_off_windows(self):
+        """The renderer itself checks too (a song.json written by hand never plays a stand-in sound instead of the plugin)."""
+        from notewright import engine, paths
+        if paths.vst3_supported():
+            self.skipTest("this machine can host VST3 plugins")
+        folder = Path(tempfile.mkdtemp())
+        song, _ = spec.compile(vst3_spec())
+        (folder / "s.song.json").write_text(json.dumps(song))
+        with self.assertRaises(engine.EngineError) as caught:
+            engine.render(folder / "s.song.json", folder / "s.wav")
+        self.assertIn("needs Windows x64", str(caught.exception))
 
 
 class Manifest(unittest.TestCase):

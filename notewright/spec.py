@@ -9,7 +9,7 @@ import math
 import re
 from pathlib import Path
 
-from . import catalog
+from . import catalog, paths
 from .notes import DRUMS, name as note_name, note_number, number
 
 MAX_PARTS = 32                       # MusicCue.MaxParts: instrument parts + additive noise regions
@@ -41,7 +41,8 @@ TRACK_KEYS = {"instrument", "layer", "gain", "pan", "attack", "release", "glide"
               "velocity", "splits", "mute", "playbackVersion", "program", "clef", "score",
               # playback V3
               "automation", "modulators", "output", "sends", "sampleShape", "articulations", "keySwitches", "vibratoRate", "ignoreSwing",
-              "stretchBpm", "stretchGrainMs", "loop", "impulse", "expression", "audio", "zones"}
+              "stretchBpm", "stretchGrainMs", "loop", "impulse", "expression", "audio", "zones",
+              "plugin"}                                             # VST3 instrument settings (Windows x64 only)
 V3_TRACK_KEYS = TRACK_KEYS - {"instrument", "layer", "gain", "pan", "attack", "release", "glide", "drive", "driveMode", "effects", "transpose",
                               "velocity", "splits", "mute", "playbackVersion", "program", "clef", "score", "zones"}
 # Kit keys missing from a drum instrument fall back to a close sound before failing.
@@ -303,17 +304,112 @@ def _split(track_name, track, entry, notes, splits, warnings):
     return sorted(groups.values(), key=lambda g: g[0]["key"])
 
 
-def _mixer(fields, where):
+def _mixer(fields, where, meter=4, sections=(), vst3=None):
+    """Mixer settings (C# field names) plus 'inserts': VST3 effects after the built-in chain (Windows x64 only)."""
     if fields is None:
         return None
     if not isinstance(fields, dict):
         raise SpecError(f"{where}: expected an object of mixer fields")
-    unknown = set(fields) - MIXER_FIELDS
+    unknown = set(fields) - MIXER_FIELDS - {"inserts"}
     if unknown:
-        raise SpecError(f"{where}: unknown mixer fields {sorted(unknown)} (valid: {', '.join(sorted(MIXER_FIELDS))})")
+        raise SpecError(f"{where}: unknown mixer fields {sorted(unknown)} (valid: {', '.join(sorted(MIXER_FIELDS))}, inserts)")
     out = dict(fields)
+    if "inserts" in out:
+        out["Inserts"] = _inserts(out.pop("inserts"), where + ".inserts", meter, sections)
+        if vst3 is not None and out["Inserts"]:
+            vst3.append(f"{where} inserts")
     if isinstance(out.get("DriveMode"), str):
         out["DriveMode"] = _enum(out["DriveMode"], DRIVE_MODES, where + ".DriveMode")
+    return out
+
+
+# ---------- VST3 plugins (Windows x64 only: the engine hosts them in a Windows worker process) ----------
+
+PLUGIN_TARGET_KEYS = {"state", "parameters", "automation", "gain", "pan", "transpose", "velocityCurve", "voices"}
+
+
+def _identity(value, where):
+    """'vst3': a plugin name as installed (`notewright plugins` lists them) or its 32-hex-digit class ID."""
+    if not isinstance(value, str) or not value.strip():
+        raise SpecError(f"{where}: 'vst3' is the plugin's name or class ID (`notewright plugins` lists the installed ones)")
+    value = value.strip()
+    return {"classId": value.upper()} if re.fullmatch(r"[0-9A-Fa-f]{32}", value) else {"name": value}
+
+
+def _normalized(values, where):
+    if not isinstance(values, dict):
+        raise SpecError(f"{where}: expected an object of parameter key → value 0-1")
+    for key, value in values.items():
+        if not isinstance(value, (int, float)) or not 0 <= value <= 1:
+            raise SpecError(f"{where}.{key}: plugin parameters are normalized values 0-1 (`notewright plugins --info` lists keys and values)")
+    return {k: float(v) for k, v in values.items()}
+
+
+def _plugin_lanes(spec, where, meter, sections):
+    if not isinstance(spec, dict):
+        raise SpecError(f"{where}: expected an object of parameter key → points")
+    out = {}
+    for key, points in spec.items():
+        flat = _points(points, f"{where}.{key}", meter, sections)
+        if any(not 0 <= v <= 1 for v in flat[1::3]):
+            raise SpecError(f"{where}.{key}: plugin parameter values are 0-1")
+        out[key] = flat
+    return out
+
+
+def _vst3_instrument(use, where):
+    """An instrument that is a VST3 plugin: {"vst3": name or class ID, vendor, version, state, parameters, voices, transpose,
+    velocityCurve, gain, pan, fallback (built-in synth preset if the plugin cannot run), drums}."""
+    use = _plain(use, where, {"vst3", "vendor", "version", "fallback", "drums", "name"} | PLUGIN_TARGET_KEYS - {"automation"})
+    plugin = _identity(use["vst3"], where + ".vst3")
+    for key in ("vendor", "version", "state"):
+        if use.get(key):
+            plugin[key] = str(use[key])
+    if "parameters" in use:
+        plugin["parameters"] = _normalized(use["parameters"], where + ".parameters")
+    for key in ("gain", "pan", "transpose", "velocityCurve"):
+        if key in use:
+            plugin[key] = use[key]
+    if "voices" in use:
+        if use["voices"] not in ("mono", "poly"):
+            raise SpecError(f"{where}.voices: mono or poly")
+        plugin["voices"] = use["voices"]
+    fallback = use.get("fallback", "Init")
+    match = [n for n in SYNTH_PRESETS if n.lower() == str(fallback).lower()]
+    if not match:
+        raise SpecError(f"{where}.fallback: unknown synthPreset '{fallback}' (presets: {', '.join(SYNTH_PRESETS)})")
+    label = use.get("name") or plugin.get("name") or plugin["classId"]
+    return {"id": f"vst3:{label}", "name": label, "kind": "drums" if use.get("drums") else "melodic", "regions": [], "tags": ["vst3"],
+            "license": "the user's installed VST3 plugin (its own license)", "source": "VST3 plugin (Windows x64)",
+            "vst3": plugin, "fallback": match[0]}
+
+
+def _inserts(items, where, meter, sections):
+    """'inserts': [{"vst3", vendor, version, mix 0-1, bypass, state, parameters, automation}] → MusicPluginInsertDefinition[]."""
+    if not isinstance(items, list):
+        items = [items]
+    if len(items) > 4:
+        raise SpecError(f"{where}: at most 4 VST3 inserts per chain")
+    out = []
+    for i, item in enumerate(items):
+        at = f"{where}[{i}]"
+        item = _plain(item, at, {"vst3", "vendor", "version", "mix", "bypass", "state", "parameters", "automation"})
+        identity = _identity(item.get("vst3"), at + ".vst3")
+        mix = float(item.get("mix", 1))
+        if not 0 <= mix <= 1:
+            raise SpecError(f"{at}.mix: 0 (dry) to 1 (wet)")
+        values = _normalized(item.get("parameters") or {}, at + ".parameters")
+        lanes = _plugin_lanes(item["automation"], at + ".automation", meter, sections) if item.get("automation") else {}
+        parameters = []
+        for key in list(values) + [k for k in lanes if k not in values]:
+            flat = lanes.get(key, [])
+            entry = {"Key": key, "Value": values.get(key, flat[1] if flat else 0.0)}
+            if flat:
+                entry["Points"] = [{"Beat": flat[k], "Value": flat[k + 1], "Curve": flat[k + 2]} for k in range(0, len(flat), 3)]
+            parameters.append(entry)
+        out.append({"ClassId": identity.get("classId", ""), "Name": identity.get("name", ""), "Vendor": str(item.get("vendor", "")),
+                    "Version": str(item.get("version", "")), "Mix": mix, "Bypass": bool(item.get("bypass")), "State": str(item.get("state", "")),
+                    "Parameters": parameters})
     return out
 
 
@@ -528,6 +624,9 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
     # instruments
     entries = {}
     for alias, use in (spec.get("instruments") or {}).items():
+        if isinstance(use, dict) and "vst3" in use:
+            entries[alias] = _vst3_instrument(use, f"instrument '{alias}'")
+            continue
         if isinstance(use, dict) and ("synth" in use or "synthPreset" in use) and "use" not in use:
             entries[alias] = _engine_synth(use, f"instrument '{alias}'")
             continue
@@ -667,7 +766,8 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
         extra["meter"] = [dict({"beat": _bar_beat(m, meter, sections, f"meterChanges[{i}]"), "numerator": int(m["numerator"]),
                                 "denominator": int(m["denominator"])}, **({"grouping": m["grouping"]} if m.get("grouping") else {}))
                           for i, m in enumerate(spec["meterChanges"])]
-    master = _mixer(spec.get("master"), "master") or {}
+    vst3_uses = []
+    master = _mixer(spec.get("master"), "master", meter, sections, vst3_uses) or {}
     if "targetLufs" in spec:
         needs_v3("targetLufs")
         if not master.get("Limiter"):
@@ -684,7 +784,7 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
     for name, b in (spec.get("buses") or {}).items():
         needs_v3(f"bus '{name}'")
         b = _plain(b, f"bus '{name}'", {"effects", "output", "pan", "automation", "impulse"})
-        bus = {"name": name, "effects": _mixer(b.get("effects"), f"bus '{name}'.effects") or {}}
+        bus = {"name": name, "effects": _mixer(b.get("effects"), f"bus '{name}'.effects", meter, sections, vst3_uses) or {}}
         if b.get("output"):
             bus["output"] = b["output"]
         if "pan" in b:
@@ -715,6 +815,8 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
     def kind(t):
         if t["entry"].get("engineSynth"):
             return "synth"
+        if t["entry"].get("vst3"):
+            return "plugin"
         if t["entry"].get("audioOnly"):
             return "audio"
         if track_version(t) >= 3 and t.get("zones", True) and version >= 3:
@@ -725,12 +827,14 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
         used = sorted(set(t) & V3_TRACK_KEYS)
         if used and (version < 3 or track_version(t) < 3):
             raise SpecError(f"track '{t['name']}': {', '.join(used)} need playbackVersion 3")
-        if kind(t) in ("synth", "audio") and (version < 3 or track_version(t) < 3):
-            raise SpecError(f"track '{t['name']}': the built-in synth and audio-only tracks need playbackVersion 3")
+        if kind(t) in ("synth", "audio", "plugin") and (version < 3 or track_version(t) < 3):
+            raise SpecError(f"track '{t['name']}': the built-in synth, VST3 plugins and audio-only tracks need playbackVersion 3")
+        if t.get("plugin") and kind(t) != "plugin":
+            raise SpecError(f"track '{t['name']}': 'plugin' settings need a VST3 instrument ({{\"vst3\": name}} in 'instruments')")
 
     def groups_of(name, splits, warn):
         t = tracks[name]
-        if kind(t) in ("synth", "audio"):
+        if kind(t) in ("synth", "audio", "plugin"):
             return [(None, t["notes"])]
         groups = _split(name, t, t["entry"], t["notes"], 10 ** 6 if kind(t) == "zones" else splits, warn)
         return [(groups, [n for _, notes in groups for n in notes])] if kind(t) == "zones" else groups
@@ -791,6 +895,18 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
                 if entry.get("wavetable"):
                     part["wavetable"] = _file(entry["wavetable"], spec_dir, f"instrument of track '{name}'.wavetable")
                 sample = ""
+            elif k == "plugin":              # one part; the plugin plays its notes (the fallback synth only if it cannot run)
+                label, gain = name, base_gain
+                plugin = dict(entry["vst3"])
+                override = _plain(t.get("plugin") or {}, f"track '{name}'.plugin", PLUGIN_TARGET_KEYS)
+                if "parameters" in override:
+                    plugin["parameters"] = dict(plugin.get("parameters", {}), **_normalized(override.pop("parameters"), f"track '{name}'.plugin.parameters"))
+                if "automation" in override:
+                    plugin["automation"] = _plugin_lanes(override.pop("automation"), f"track '{name}'.plugin.automation", meter, sections)
+                plugin.update(override)
+                part = {"name": label, "root": 60, "synthPreset": entry["fallback"], "plugin": plugin}
+                sample = ""
+                vst3_uses.append(f"track '{name}'")
             else:                            # audio only: the recordings play through the part's first clip
                 if not clips:
                     raise SpecError(f"track '{name}': an audio-only track needs 'audio' clips")
@@ -808,7 +924,7 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
             if t.get("drive"):
                 part["drive"] = float(t["drive"])
                 part["driveMode"] = _enum(t.get("driveMode", "Soft"), DRIVE_MODES, f"track '{name}'.driveMode")
-            effects = _mixer(t.get("effects"), f"track '{name}'.effects")
+            effects = _mixer(t.get("effects"), f"track '{name}'.effects", meter, sections, vst3_uses if index == 0 else None)
             if boost > 0:
                 effects = dict(effects or {})
                 effects["OutputDb"] = round(min(30.0, float(effects.get("OutputDb", 0)) + boost), 2)
@@ -825,6 +941,12 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
             part_meta.append({"name": label, "track": name, "sample": sample, "instrument": entry["id"]})
     if not parts:
         raise SpecError("no notes to play: add sections with 'play' (or top-level 'notes')")
+    if vst3_uses:
+        if version < 3:
+            raise SpecError(f"VST3 plugins ({', '.join(vst3_uses)}) need playbackVersion 3")
+        if not paths.vst3_supported():
+            warnings.append(f"VST3 plugins ({', '.join(vst3_uses)}): {paths.VST3_UNAVAILABLE} Rendering this spec fails here; "
+                            "--score-only still writes MIDI and MusicXML.")
 
     song = {"name": title, "bpm": bpm, "beatsPerBar": meter, "loopBeats": loop, "playbackVersion": version,
             "source": spec.get("source", "notewright plugin"), "tempo": tempo,
@@ -843,7 +965,8 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
                         "layer": t["layer"], "notes": t["notes"], "mute": bool(t.get("mute")), "program": t.get("program"),
                         "clef": t.get("clef"), "score": t.get("score", True), "pan": float(t.get("pan", 0)),
                         "gain": float(t.get("gain", .5))} for t in tracks.values()],
-            "parts": part_meta, "credits": list(credits.values()), "warnings": warnings, "output": spec.get("output") or {}}
+            "parts": part_meta, "credits": list(credits.values()), "warnings": warnings, "output": spec.get("output") or {},
+            "vst3": vst3_uses}
     return song, meta
 
 

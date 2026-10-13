@@ -103,9 +103,10 @@ namespace Graze.Presentation.Audio
         /// Buses for a cue's parts that have effects (index = part index), or null when none apply (V1 cues ignore track effects).
         /// A V3 cue with mix buses gets them after the part buses (index PartCount + bus), and its routed parts always get a bus.
         /// </summary>
-        public static MusicTrackEffects[] For(MusicCue cue, int sampleRate)
+        public static MusicTrackEffects[] For(MusicCue cue, int sampleRate, bool preparation = false)
         {
             if (cue.PlaybackVersion < MusicPlaybackVersion.V2) return null;
+            if (cue.HasPluginInserts && !preparation) throw new System.InvalidOperationException("Prepare VST3 inserts with MusicPluginInsertRenderer before playback; use its prepared PCM reader.");
             bool routing = cue.PlaybackVersion >= MusicPlaybackVersion.V3 && cue.Buses.Length > 0;
             MusicTrackEffects[] buses = routing ? new MusicTrackEffects[cue.PartCount + cue.Buses.Length] : null;
             if (routing) for (int b = 0; b < cue.Buses.Length; b++) buses[cue.PartCount + b] = new MusicTrackEffects(cue.Buses[b].Effects, sampleRate,true);
@@ -114,7 +115,7 @@ namespace Graze.Presentation.Audio
                 var part = cue.Parts[i];
                 int version = cue.PlaybackVersionOf(part);
                 // V3: routed tracks and sidechain keys always get a bus (pass-through without effects); the key level is read from its input.
-                if (version >= MusicPlaybackVersion.V2 && (version >= MusicPlaybackVersion.V3 && cue.PlaybackVersion >= MusicPlaybackVersion.V3 && ((routing && part.Routed) || cue.SidechainKey[i])))
+                if (version >= MusicPlaybackVersion.V2 && (preparation || (version >= MusicPlaybackVersion.V3 && cue.PlaybackVersion >= MusicPlaybackVersion.V3 && ((routing && part.Routed) || cue.SidechainKey[i]))))
                 {
                     if (buses == null) buses = new MusicTrackEffects[cue.PartCount];
                     buses[i] = new MusicTrackEffects(part.Effects, sampleRate,version>=MusicPlaybackVersion.V3&&cue.PlaybackVersion>=MusicPlaybackVersion.V3) { Automated = part.HasEffectAutomation }; continue;

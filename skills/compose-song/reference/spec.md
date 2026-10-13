@@ -49,6 +49,7 @@ Working examples: `${CLAUDE_PLUGIN_ROOT}/examples/pop.json` and `orchestral.json
 | `{"use": "...", "velocity": 60, "kind": "drums"}` | dict form: `velocity` picks the sample layer (1-127, default 100); `kind` filters `find:` |
 | `{"synthPreset": "Acid bass"}` | the engine's built-in synth (V3), a preset: `Init`, `Saw lead`, `Square lead`, `Pluck`, `Warm pad`, `Sub bass`, `Acid bass`, `Brass`, `Bell keys`, `Noise sweep`, `Jazz organ`, `Jazz organ perc`, `Rock organ`, `Gospel organ`, `FM e-piano`, `FM bell`, `FM bass`, `Wavetable pad`, `Wavetable vox` |
 | `{"synth": {"Osc1Wave": "Saw", "CutoffHz": 1200, ...}}` | the built-in synth with your own settings (C# field names of `MusicSynthSettings`: oscillators incl. `Organ` drawbars, `Fm`, `Wavetable`; filter and envelopes, two LFOs, mod matrix, unison); optional `"wavetable": "table.wav"` |
+| `{"vst3": "Surge XT", ...}` | **Windows x64 only**: an installed VST3 instrument (V3); see [VST3 plugins](#vst3-plugins-windows-x64-only) |
 
 Relative paths are relative to the spec file.
 
@@ -71,7 +72,8 @@ Relative paths are relative to the spec file.
   "mute": false,
   "program": 0,                  // MIDI export General MIDI program (0-127); guessed from the instrument when absent
   "clef": "treble",              // score: treble | bass | treble8vb (guessed from the range)
-  "score": true                  // false leaves the track out of the MusicXML score
+  "score": true,                 // false leaves the track out of the MusicXML score
+  "plugin": { ... }              // VST3 instrument tracks only (Windows x64): per-track parameters/automation, see below
 }
 ```
 A track may also be just the alias string: `"pad": "pad"`.
@@ -201,6 +203,50 @@ counts tracks (+ additive noise regions), and `splits` no longer applies.
 | `Color` | V3: object | `{"EqBands": [{"Enabled": true, "Type": 0, "Hz": 350, "Db": -4, "Q": 1.2}], "Phaser": true, "PhaserRateHz": 0.3, "Flanger": true, "Tremolo": true, "TremoloPan": true, "TremoloBeats": 2, "StereoWidth": 1.4, "Multiband": true, "DeEsser": true, "Rotary": true, …}` (C# field names; band `Type` 0 Peak, 1 LowShelf, 2 HighShelf, 3 LowCut, 4 HighCut, 5 Notch) |
 
 V2 fields need `playbackVersion` 2+, V3 fields 3 (`check` warns otherwise). Enum fields take names (`"AmpModel": "Crunch"`).
+`"inserts": [...]` in `master`, a track's `effects` or a bus's `effects` adds VST3 effects after the built-in chain (**Windows x64
+only**, see below).
+
+## VST3 plugins (Windows x64 only)
+
+**Only on 64-bit Windows** (Claude Code on a Windows computer with the plugins installed). The engine runs each VST3 plugin in a
+Windows worker process; **on macOS, Linux, the claude.ai/Cowork sandbox or any other system VST3 cannot be used at all**: `setup`
+shows `vst3` as unavailable, `check` warns, `render` stops with an error (`--score-only` still writes MIDI and MusicXML). There, do
+not offer VST3: use the built-in synth, samples and the built-in effects (or have the user export the sound to WAV/SFZ, see
+instruments.md). AU/AAX plugins and Kontakt libraries cannot be loaded on any system.
+
+On Windows:
+- `plugins` lists installed VST3 instruments and effects (name, vendor, class ID) from `C:\Program Files\Common Files\VST3` and
+  `%LOCALAPPDATA%\Programs\Common\VST3` (`--roots "D:\VST3;E:\More"` or `NOTEWRIGHT_VST3_PATH` for other folders). The scan is
+  cached; `--rescan` after installing plugins. Only installed plugins in these folders load; a spec names a plugin, never a file.
+- `plugins --info "Surge XT"` loads one and lists its parameters: `key` (use it in `parameters`/`automation`), current `value`
+  (normalized 0-1), `unit`, `steps`. `--preset file.vstpreset --state` prints a preset as a `state` string.
+
+```jsonc
+"instruments": {
+  "lead": {"vst3": "Surge XT",            // installed name (or its 32-hex-digit class ID); "vendor"/"version" pick one of several
+           "state": "",                    // optional full plugin state (base64 from `plugins --info --state`), a sound/preset
+           "parameters": {"filter_1_cutoff": 0.45},   // normalized 0-1, by key, name or numeric ID
+           "voices": "poly",               // mono = one note at a time (legato lines)
+           "transpose": 0, "velocityCurve": 1, "gain": 1, "pan": 0,
+           "fallback": "Saw lead",         // built-in synth preset that plays if the plugin cannot run (the report says so)
+           "drums": false}                 // true: a drum plugin (drum grids, Drums layer)
+},
+"tracks": {
+  "lead": {"instrument": "lead",
+           "plugin": {"parameters": {"filter_1_cutoff": 0.3},                 // per-track overrides of the instrument's settings
+                      "automation": {"filter_1_cutoff": [{"bar": 1, "value": 0.2}, {"bar": 9, "value": 0.8, "curve": "smooth"}]}},
+           "effects": {"inserts": [{"vst3": "Valhalla Supermassive", "mix": 0.4,
+                                    "parameters": {"mix": 1}, "automation": {"feedback": [[0, 0.3], [32, 0.7]]}}]}}
+},
+"master": {"inserts": [{"vst3": "Pro-L 2", "state": "..."}]}
+```
+- A VST3 instrument track is one engine part; level, pan, automation, sends, buses and the built-in effects work as on any track.
+- `inserts`: at most 4 per chain, each `{"vst3", "vendor", "version", "mix" 0-1, "bypass", "state", "parameters", "automation"}`;
+  they run after the built-in effects of that track, bus or the master (before the master limiter).
+- Automation points are positions with values 0-1 (curves like other lanes).
+- Plugins render offline before the mix (a render takes longer than without them). A plugin that fails to load or crashes is
+  reported in `pluginWarnings` and `advice`: the track played its `fallback` or the insert was bypassed — fix it and render again.
+- `--unity`: VST3 instruments go to `<title>.plugin-mod.json` (a graze plugin mod; fill in class IDs where only a name was given).
 
 ## regions (noise and glitch effects over a time range)
 

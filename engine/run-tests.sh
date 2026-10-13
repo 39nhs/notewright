@@ -8,6 +8,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 runtime=${NOTEWRIGHT_RUNTIME:-mono}
 out=$(mktemp -d)
+export NOTEWRIGHT_PLUGIN_HOST=${NOTEWRIGHT_PLUGIN_HOST:-$here/Native/PluginHost/graze-plugin-host.exe}   # VST3 tests (Windows x64, opt-in)
 trap 'rm -rf "$out"' EXIT
 # The Mono reference framework has no Array.Fill (.NET Standard 2.1); tests get a shim on every runtime.
 mkdir -p "$out/tests"

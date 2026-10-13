@@ -424,6 +424,7 @@ namespace Graze.Presentation.Audio
         /// <summary>Playback V3+ mix buses in processing order (each feeds a later bus or the master). Empty when the song has none.</summary>
         internal readonly MusicBus[] Buses;
         public int BusCount => Buses.Length;
+        public readonly bool HasPluginInserts;
         // Playback V3+ sidechain: key part index for each part's chain, each bus and the master (-1 = none); parts that are keys.
         internal readonly int[] PartSidechain, BusSidechain;
         internal readonly int MasterSidechain;
@@ -499,6 +500,18 @@ namespace Graze.Presentation.Audio
             // V3 tape speed: the tempo map follows it, so durations, seeking and exports include the slowed stretch.
             if (PlaybackVersion >= MusicPlaybackVersion.V3 && MasterAutomation?[(int)MusicAutomationTarget.Speed] != null)
                 Tempo = MusicTempoMap.WithSpeed(bpm, loopBeats, tempoChanges, MasterAutomation[(int)MusicAutomationTarget.Speed]);
+            MusicPluginInsert.CheckLoop(Mixer, loopBeats);
+            HasPluginInserts = PlaybackVersion >= MusicPlaybackVersion.V3 && Mixer.Inserts.Length > 0;
+            foreach (var part in Parts)
+            {
+                MusicPluginInsert.CheckLoop(part.Effects, loopBeats);
+                HasPluginInserts |= PlaybackVersion >= MusicPlaybackVersion.V3 && PlaybackVersionOf(part) >= MusicPlaybackVersion.V3 && (part.Effects?.Inserts.Length ?? 0) > 0;
+            }
+            foreach (var bus in Buses)
+            {
+                MusicPluginInsert.CheckLoop(bus.Effects, loopBeats);
+                HasPluginInserts |= PlaybackVersion >= MusicPlaybackVersion.V3 && bus.Effects.Inserts.Length > 0;
+            }
             Harmony = MusicHarmony.Analyze(this);
             foreach (var part in Parts)
                 if (part.Layer == MusicLayer.Drums && part.Gain > 0)

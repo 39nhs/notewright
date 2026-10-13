@@ -30,7 +30,7 @@ def unity_folder(song, meta, folder: Path, name: str):
     samples.mkdir(exist_ok=True)
     out = copy.deepcopy(song)
     instrument = {info["name"]: info["instrument"] for info in meta["parts"]}
-    names, taken = {}, set()
+    names, taken, mod_targets = {}, set(), []
     for part in out["parts"]:
         prefix = re.sub(r"[^A-Za-z0-9]+", "-", instrument.get(part["name"], part["name"])).strip("-")
         for owner, key in _file_refs({"parts": [part]}):
@@ -45,6 +45,10 @@ def unity_folder(song, meta, folder: Path, name: str):
                 names[source], _ = target, taken.add(target)
             owner[key] = names[source]
         part.pop("stem", None)                                  # renderer-only key
+        if part.get("plugin"):                                  # Unity reads VST3 instruments from a plugin mod, not song.json
+            plugin = part.pop("plugin")
+            identity = {k: plugin.pop(k) for k in ("classId", "name", "vendor", "version") if k in plugin}
+            mod_targets.append(dict({"song": out["name"], "instrument": part["name"], "plugin": identity}, **plugin))
     song_refs = [(bus, "impulse") for bus in out.get("buses") or [] if bus.get("impulse")] + ([(out, "masterImpulse")] if out.get("masterImpulse") else [])
     for owner, key in song_refs:
         source = Path(owner[key])
@@ -55,6 +59,11 @@ def unity_folder(song, meta, folder: Path, name: str):
         owner[key] = names[source]
     path = folder / f"{name}.song.json"
     path.write_text(json.dumps(out, indent=1, ensure_ascii=False), encoding="utf-8")
+    if mod_targets:   # MusicPluginMod.FromJson (Windows x64); a target named only by plugin name needs its classId filled in
+        mod = {"format": "graze-plugin-mod/1", "name": out["name"], "targets": mod_targets}
+        if any("classId" not in t["plugin"] for t in mod_targets):
+            mod["todo"] = "fill in each plugin's classId (`notewright plugins` on Windows lists them) and remove this key"
+        (folder / f"{name}.plugin-mod.json").write_text(json.dumps(mod, indent=1, ensure_ascii=False), encoding="utf-8")
     lines = [f"# {meta['title']} — instruments", ""]
     for c in meta["credits"]:
         lines.append(f"- {c['instrument']} ({c['source']}): {c['license'] or 'license unknown'}" + (f" — {c['credit']}" if c["credit"] else ""))

@@ -43,7 +43,10 @@ is typically 1–30 MB. `--all-layers` downloads everything but the engine still
 - Other WAVs become one-shot instruments (root C4; change with `add … --root`).
 - A **graze `Instruments~` library** (sessions/*.json + samples/) from com.graze.music: each recorded instrument with its root key.
 
-**VST/AU/AAX plugins and Kontakt libraries cannot be loaded** (the engine plays WAV samples). Ways around it:
+**VST3 plugins work only on Windows x64**: there, `plugins` lists the installed ones and a spec uses them as
+`{"vst3": "<name>"}` instruments and `inserts` effects ([spec.md](spec.md#vst3-plugins-windows-x64-only)). **On macOS, Linux, the
+claude.ai/Cowork sandbox or any other system VST3 cannot be used**, and **AU/AAX plugins and Kontakt libraries cannot be loaded
+anywhere**. Ways around it:
 1. Render the plugin's notes to WAV in a DAW — one note every few semitones (e.g. every minor third, C1–C7), named
    `<Name>_<Note>.wav` — and `scan` the folder; or
 2. Convert the patch to SFZ + WAV with a sampler or converter that exports SFZ, then `scan` it; or

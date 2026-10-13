@@ -15,15 +15,16 @@ namespace GrazePlugin
     /// A range (--start/--length) plays from the song's start silently up to --start and stops at its end (see EndAt). The mix and the
     /// stems render on up to --jobs threads (default min(4, processors)); each has its own engine, so the audio is the same as one by one.
     /// </summary>
-    public static class Program
+    public static partial class Program
     {
         public static int Main(string[] args)
         {
             try
             {
-                if (args.Length == 0 || args[0] != "render") throw new ArgumentException("usage: renderer render --song song.json --out mix.wav [options]");
+                if (args.Length == 0 || (args[0] != "render" && args[0] != "plugins" && args[0] != "plugin-info"))
+                    throw new ArgumentException("usage: renderer render --song song.json --out mix.wav [options] | renderer plugins | renderer plugin-info --plugin NAME");
                 var o = Options(args);
-                var report = Render(o);
+                var report = args[0] == "plugins" ? ListPlugins(o) : args[0] == "plugin-info" ? PluginInfo(o) : Render(o);
                 string json = Json.Write(report);
                 if (o.TryGetValue("report", out var path)) File.WriteAllText(path, json);
                 Console.WriteLine(json);
@@ -46,7 +47,7 @@ namespace GrazePlugin
                 if (!args[i].StartsWith("--") || i + 1 >= args.Length) throw new ArgumentException("bad option " + args[i]);
                 o[args[i].Substring(2)] = args[++i];
             }
-            if (!o.ContainsKey("song") || !o.ContainsKey("out")) throw new ArgumentException("--song and --out are required");
+            if (args[0] == "render" && (!o.ContainsKey("song") || !o.ContainsKey("out"))) throw new ArgumentException("--song and --out are required");
             return o;
         }
 
@@ -58,8 +59,10 @@ namespace GrazePlugin
             string songPath = Path.GetFullPath(o["song"]);
             string samples = o.TryGetValue("samples", out var s) ? s : Path.Combine(Path.GetDirectoryName(songPath), "Samples");
             int rate = (int)D(o, "rate", 48000), bits = (int)D(o, "bits", 16);
-            var song = SongLoader.Load(File.ReadAllText(songPath), samples, out var groups);
-            var lufs = MusicLoudness.MatchTarget(song, rate); // "targetLufs": the master limiter input for the whole song
+            var song = SongLoader.Load(File.ReadAllText(songPath), samples, out var groups, out var pluginTargets);
+            var vst = Vst3Song.For(song, pluginTargets, o); // null without VST3 plugins (Windows x64 only)
+            var lufs = vst == null || song.TargetLufs == 0 ? MusicLoudness.MatchTarget(song, rate) // "targetLufs": the master limiter input for the whole song
+                : MusicLoudness.Match(song, song.TargetLufs, x => vst.RenderSong(x, rate), rate);
             double start = D(o, "start", 0), length = D(o, "length", song.LoopBeats - start), tail = D(o, "tail", 0);
             if (start < 0 || start >= song.LoopBeats || length <= 0) throw new ArgumentException("--start/--length outside the song");
             double end = Math.Min(song.LoopBeats, start + length);
@@ -92,7 +95,7 @@ namespace GrazePlugin
                 {
                     var job = cue;
                     if (t > 0) lock (gate) job = Stem(song, groups, names[t - 1], names[t - 1] == regionStem, sounding, mute, start, end, out notes[t]);
-                    results[t] = RenderToFloat(job, rate, startSeconds, frames, temps[t]);
+                    results[t] = RenderToFloat(job, rate, startSeconds, frames, temps[t], vst);
                 });
                 var mix = results[0];
                 double gain = 1;
@@ -108,6 +111,8 @@ namespace GrazePlugin
                     ["gainDb"] = Db(gain), ["outputPeakDb"] = Db(mix.Peak * gain), ["outputRmsDb"] = Db(mix.Rms * gain),
                     ["targetLufs"] = song.TargetLufs, ["lufs"] = lufs == null ? (object)null : Math.Round(lufs.Value, 2), ["limiterInputDb"] = song.Mixer.LimiterInputDb,
                     ["jobs"] = jobs,
+                    ["plugins"] = vst == null ? new List<object>() : vst.Used.ToList<object>(),
+                    ["pluginWarnings"] = vst == null ? new List<object>() : vst.Diagnostics.ToList<object>(),
                     ["perSecond"] = mix.PerSecond.Select(x => (object)new List<object> { Math.Round(Db(x.Rms), 1), Math.Round(Db(x.Peak), 1) }).ToList(),
                 };
                 if (stems != null)
@@ -189,12 +194,18 @@ namespace GrazePlugin
 
         sealed class Stats { public double Peak, Rms; public long NearFullScale; public int Dropped, PeakVoices; public List<(double Rms, double Peak)> PerSecond = new List<(double, double)>(); }
 
-        /// <summary>Renders one second at a time into a raw float32 stereo file (playOnce).</summary>
-        static Stats RenderToFloat(MusicCue cue, int rate, double startSeconds, long frames, string path)
+        /// <summary>
+        /// Renders one second at a time into a raw float32 stereo file (playOnce). With VST3 plugins the song is prepared offline first
+        /// (<see cref="Vst3Song.Prepare"/>) and this reads the prepared audio; voice counts are then not reported (0).
+        /// </summary>
+        static Stats RenderToFloat(MusicCue cue, int rate, double startSeconds, long frames, string path, Vst3Song vst = null)
         {
-            var engine = new AdaptiveMusicEngine(cue, rate, playOnce: true);
+            var engine = vst == null ? new AdaptiveMusicEngine(cue, rate, playOnce: true) : null;
             var block = new float[rate * 2];
-            for (long skip = (long)Math.Round(startSeconds * rate); skip > 0; skip -= rate)
+            long first = (long)Math.Round(startSeconds * rate);
+            var prepared = vst == null ? null : vst.Prepare(cue, rate, (first + frames) / (double)rate).CreateReader(checked((int)first), checked((int)frames));
+            if (engine != null)
+            for (long skip = first; skip > 0; skip -= rate)
             {
                 int n = (int)Math.Min(rate, skip);
                 engine.RenderStereo(n == rate ? block : new float[n * 2]);
@@ -208,7 +219,7 @@ namespace GrazePlugin
                 {
                     int n = (int)Math.Min(rate, frames - done);
                     var buffer = n == rate ? block : new float[n * 2];
-                    engine.RenderStereo(buffer);
+                    if (engine != null) engine.RenderStereo(buffer); else prepared.ReadStereo(buffer);
                     double secondEnergy = 0, secondPeak = 0;
                     for (int i = 0; i < n * 2; i++)
                     {
@@ -226,7 +237,7 @@ namespace GrazePlugin
                 }
             }
             stats.Rms = Math.Sqrt(energy / (frames * 2));
-            stats.Dropped = engine.DroppedNotes; stats.PeakVoices = engine.PeakVoices;
+            if (engine != null) { stats.Dropped = engine.DroppedNotes; stats.PeakVoices = engine.PeakVoices; }
             return stats;
         }
 
@@ -299,11 +310,15 @@ namespace GrazePlugin
             }).ToArray();
         }
 
-        public static MusicCueDefinition Load(string json, string samplesFolder) => Load(json, samplesFolder, out _);
+        public static MusicCueDefinition Load(string json, string samplesFolder) => Load(json, samplesFolder, out _, out _);
 
-        /// <param name="stemGroups">Per part: its optional "stem" key (renderer only; Unity ignores it), else its name.</param>
-        public static MusicCueDefinition Load(string json, string samplesFolder, out string[] stemGroups)
+        public static MusicCueDefinition Load(string json, string samplesFolder, out string[] stemGroups) => Load(json, samplesFolder, out stemGroups, out _);
+
+        /// <param name="stemGroups">Per part: its optional "stem" key (renderer only), else its name.</param>
+        /// <param name="plugins">Per part with a "plugin" (a VST3 instrument, Windows x64 only): its name and the plugin object (see Vst3.cs).</param>
+        public static MusicCueDefinition Load(string json, string samplesFolder, out string[] stemGroups, out List<KeyValuePair<string, Dictionary<string, object>>> plugins)
         {
+            var targets = new List<KeyValuePair<string, Dictionary<string, object>>>();
             var root = Json.Obj(Json.Parse(json), "song");
             var song = ScriptableObject.CreateInstance<MusicCueDefinition>();
             song.name = Json.Str(root, "name", "Song");
@@ -418,6 +433,13 @@ namespace GrazePlugin
                     if (synth != null) throw new FormatException(name + ": use either \"synth\" or \"synthPreset\", not both.");
                     synth = MusicSynthPresets.Create(preset);
                 }
+                var plugin = p.TryGetValue("plugin", out var pluginRaw) && pluginRaw != null ? Json.Obj(pluginRaw, name + ".plugin") : null;
+                if (plugin != null)
+                {
+                    targets.Add(new KeyValuePair<string, Dictionary<string, object>>(name, plugin));
+                    // The engine's own voice stands in only if the plugin fails (the report lists that); without one the Init synth does.
+                    if (synth == null && string.IsNullOrEmpty(Json.Str(p, "sample")) && !p.ContainsKey("zones")) synth = MusicSynthPresets.Create("Init");
+                }
                 string wavetable = Json.Str(p, "wavetable"); // custom table for the Wavetable waveform (frames of 2048 samples)
                 if (!string.IsNullOrEmpty(wavetable) && synth != null) synth.WavetableClip = Clip(wavetable, name + " wavetable");
                 string sampleName = Json.Str(p, "sample");
@@ -512,6 +534,7 @@ namespace GrazePlugin
                         : Array.Empty<MusicSendDefinition>(),
                 };
             }).ToArray();
+            plugins = targets;
             return song;
         }
     }
