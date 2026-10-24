@@ -909,6 +909,41 @@ class Mml(unittest.TestCase):
         self.assertGreater(lost["quantized"]["notes"], 0)
         self.assertTrue(any("64th" in w for w in lost["warnings"]))
 
+    def test_lostark_instrument_ranges(self):
+        # Lost Ark greys out and does not play notes outside an instrument's range: a tuba part's C2 and C#2 were greyed out in the game.
+        from notewright import mml
+        def meta(keys, instrument="tuba"):
+            return {"title": "t", "bpm": 120, "meter": 4, "loop": 8, "tempo": [], "barStarts": [0, 4, 8],
+                    "tracks": [{"name": "bass", "instrument": instrument, "tags": [instrument], "drums": False,
+                                "notes": [[i, 1, k, .6] for i, k in enumerate(keys)]}]}
+        low = meta([36, 37, 38, 54])
+        kept = mml.score(low, "lostark", "none", {"bass": "튜바"})
+        self.assertEqual(kept["scores"][0]["range"]["status"], "outside")
+        self.assertEqual(kept["scores"][0]["range"]["outside"], 2)
+        self.assertTrue(any("outside 튜바's range" in w and "bars 1" in w for w in kept["warnings"]), kept["warnings"])
+        self.assertIn("NOT PLAYED", mml.text_file(kept, low))
+        self.assertEqual(sorted(n[2] for v in mml.parse(kept["scores"][0]["mml"]) for n in v), [36, 37, 38, 54])  # warn keeps the notes
+        moved = mml.score(low, "lostark", "none", {"bass": "튜바"}, "octave")
+        self.assertEqual(sorted(n[2] for v in mml.parse(moved["scores"][0]["mml"]) for n in v), [38, 48, 49, 54])
+        self.assertEqual([(r["from"], r["to"]) for r in moved["repairs"]], [(36, 48), (37, 49)])
+        self.assertEqual(moved["scores"][0]["range"]["status"], "ok")
+        self.assertEqual(mml.score(low, "lostark", "none", {"bass": "튜바"}, "octave")["repairs"], moved["repairs"])   # never twice
+        suggested = mml.score(low, "lostark", "none")              # the suggestion picks an instrument that plays every note
+        self.assertEqual(suggested["scores"][0]["instrument"], "첼로")
+        self.assertTrue(any("instead of 튜바" in w for w in suggested["warnings"]))
+        d2 = mml.score(meta([38]), "lostark", "none")
+        self.assertEqual((d2["scores"][0]["instrument"], d2["scores"][0]["range"]["status"]), ("튜바", "ok"))
+        self.assertEqual([n[:3] for v in mml.parse(d2["scores"][0]["mml"]) for n in v], [[0, 1, 38]])
+        unknown = mml.score(meta([60], "violin"), "lostark")
+        self.assertEqual(unknown["scores"][0]["range"]["status"], "unknown")       # not checked is said, never passed
+        self.assertTrue(any("not checked" in w for w in unknown["warnings"]))
+        self.assertEqual(mml.score(low, "mabinogi")["scores"][0]["range"]["status"], "unknown")
+        with self.assertRaises(mml.MmlError):
+            mml.score(low, "lostark", instruments={"nope": "튜바"})
+        spec_ = {"title": "t", "bpm": 120, "instruments": {"b": "synth:pad"}, "tracks": {"bass": {"instrument": "b"}}}
+        played = mml.game_spec(kept, spec_, low)                     # the comparison leaves out what the game does not play
+        self.assertEqual([n[2] for n in played["notes"]["bass"]["notes"]], [38, 54])
+
     def test_tempo_change_inside_a_note_is_tied(self):
         from notewright import mml
         tempo = [(0, 120), (48, 90)]

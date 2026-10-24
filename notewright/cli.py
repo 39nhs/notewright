@@ -541,7 +541,8 @@ def cmd_render(args):
             except RuntimeError as error:
                 meta["warnings"].append(f"pdf: {error}")
     if args.mml:
-        result["mml"] = _write_mml(meta, args.mml, args.mml_dynamics, out_dir, slug, result["files"])
+        result["mml"] = _write_mml(meta, args.mml, args.mml_dynamics, out_dir, slug, result["files"], None, args.mml_instrument,
+                                   args.mml_range)
     if args.unity:
         result["files"]["unity"] = str(export.unity_folder(song, meta, out_dir / "unity", slug))
     result["files"]["songJson"] = str(song_path)
@@ -571,18 +572,30 @@ def _hint(message):
     return None
 
 
-def _write_mml(meta, games, dynamics, out_dir, slug, files, compare=None):
-    """Writes <slug>.<game>.mml.txt per game; returns a summary per game (scores, character counts, warnings). compare: the spec's
-    path, to also write <spec>.<game>.game.json next to it, a spec that plays the MML as the game reads it."""
+def _instruments(pairs):
+    """['bass=첼로', ...] → {'bass': '첼로'}."""
+    out = {}
+    for pair in pairs or []:
+        track, sep, name = pair.partition("=")
+        if not sep or not track.strip() or not name.strip():
+            raise ValueError(f"--instrument takes TRACK=INSTRUMENT (e.g. bass=첼로), not '{pair}'")
+        out[track.strip()] = name.strip()
+    return out
+
+
+def _write_mml(meta, games, dynamics, out_dir, slug, files, compare=None, instruments=None, range_policy="warn"):
+    """Writes <slug>.<game>.mml.txt per game; returns a summary per game (scores, character counts, ranges, warnings). compare: the
+    spec's path, to also write <spec>.<game>.game.json next to it, a spec that plays the MML as the game reads it."""
     summary = {}
     for game in (list(mml.GAMES) if "all" in games else games):
-        result = mml.score(meta, game, dynamics)
+        result = mml.score(meta, game, dynamics, _instruments(instruments), range_policy)
         path = out_dir / f"{slug}.{game}.mml.txt"
         path.write_text(mml.text_file(result, meta), encoding="utf-8")
         files[f"mml-{game}"] = str(path)
-        summary[game] = {"scores": [{k: s[k] for k in ("track", "part", "of", "bars", "instrument", "chars", "notes", "nodes", "fits")}
+        summary[game] = {"scores": [{k: s[k] for k in ("track", "part", "of", "bars", "instrument", "chars", "notes", "nodes", "fits",
+                                                       "range")}
                                     for s in result["scores"]], "warnings": result["warnings"], "about": result["about"],
-                         "quantized": result["quantized"]}
+                         "quantized": result["quantized"], "repairs": len(result["repairs"])}
         if compare:
             game_path = compare.with_name(f"{compare.stem}.{game}.game.json")
             game_path.write_text(json.dumps(mml.game_spec(result, specs.load(compare), meta), indent=2, ensure_ascii=False) + "\n",
@@ -600,7 +613,8 @@ def cmd_mml(args):
     out_dir = Path(args.out).resolve() if args.out else spec_path.parent / "out" / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     files = {}
-    summary = _write_mml(meta, args.game, args.dynamics, out_dir, slug, files, spec_path if args.compare else None)
+    summary = _write_mml(meta, args.game, args.dynamics, out_dir, slug, files, spec_path if args.compare else None, args.instrument,
+                         args.range)
     _print({"ok": True, "files": files, "mml": summary})
     return 0
 
@@ -652,6 +666,9 @@ def main(argv=None):
     p.add_argument("--unity", action="store_true", help="also write a Unity SongJsonBuilder folder (song.json + Samples + CREDITS)")
     p.add_argument("--mml", nargs="+", choices=list(mml.GAMES) + ["all"], help="also write game MML: mabinogi, mabinogi-mobile, lostark or all")
     p.add_argument("--mml-dynamics", choices=mml.DYNAMICS, default="coarse", help="MML volume changes: coarse (default, fewer characters), full, none")
+    p.add_argument("--mml-instrument", action="append", metavar="TRACK=NAME", help="game instrument for a track (its range is checked)")
+    p.add_argument("--mml-range", choices=mml.RANGE_POLICIES, default="warn",
+                   help="notes outside the game instrument's range: warn (default) or octave (move them by octaves, listed in repairs)")
     p = sub.add_parser("midi", help="read a MIDI file: tempo, meter, key, tracks, chords per bar; --spec writes an editable spec")
     p.add_argument("file")
     p.add_argument("--spec", help="also write the MIDI file as a spec to this path")
@@ -668,6 +685,10 @@ def main(argv=None):
     p.add_argument("--out", help="output folder (default <spec folder>/out/<title>)")
     p.add_argument("--compare", action="store_true", help="also write <spec>.<game>.game.json next to the spec: the MML's own notes, "
                    "lengths and tempo, to render and compare with the original")
+    p.add_argument("--instrument", action="append", metavar="TRACK=NAME", help="game instrument for a track instead of the suggestion "
+                   "(e.g. bass=첼로); its range is checked")
+    p.add_argument("--range", choices=mml.RANGE_POLICIES, default="warn",
+                   help="notes outside the game instrument's range: warn (default) or octave (move them by octaves, listed in repairs)")
     p = sub.add_parser("plugins", help="installed VST3 instruments and effects (Windows x64 only); --info NAME lists a plugin's parameters")
     p.add_argument("--info", metavar="NAME", help="load this plugin (name or class ID): parameter keys, values 0-1, latency, state")
     p.add_argument("--preset", help="with --info: read this .vstpreset into the state (for 'state' in the spec)")

@@ -121,6 +121,15 @@ plays the original timing: `mml <spec> --compare` writes `<spec>.<game>.game.jso
 the game reads it; render it to hear the difference. For triplet-heavy songs meant for Lost Ark, say that the triplets are
 approximated, and that only entering the score in the game and copying it back proves it.
 
+**Instrument ranges (Lost Ark).** Each game instrument has its own range; the game greys out notes outside it and does not play
+them, and the WAV cannot show this (the samples go lower and higher). Known ranges (MIDI, C4 = 60; "seen" = greyed out in the game,
+the rest are players' reports, unverified): 튜바 D2 (seen)-C4, 첼로 C2-A#5, 피아노 C2-C7, 플루트 B3-F7, 하프 A0-C8; other
+instruments are not checked and the warnings say so. The export suggests an instrument whose range holds the track (a bass line with
+C2 becomes 첼로, not 튜바; lower than C2 only 하프), reports notes outside the range with their bars (`range` per score, "NOT
+PLAYED" in the text file), takes `--instrument "bass=튜바"` to choose, and `--range octave` moves the outside notes by octaves into
+the range (listed in `repairs`; the spec keeps the original notes). When writing for Lost Ark, keep each part inside its instrument's
+range in the spec itself (bass from D2 for a tuba) rather than relying on the repair, and tell the user which ranges are unverified.
+
 ## Rules
 
 - Use `playbackVersion` 3 (the default; see [reference/spec.md](reference/spec.md) "Playback V3 features"). Use 2 or 1 only to
