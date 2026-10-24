@@ -32,7 +32,8 @@ Claude가 **com.graze.music 엔진(재생 V3)** 으로 곡을 작곡·편곡·�
    - 코드 진행만 쓰면 반주 생성: 보이싱(부드러운 성부 진행)·베이스 라인(루트·5도·옥타브·워킹)·아르페지오·드럼 그루브(홀수 박자 묶음을 따름)
    - **폴리미터**: 마디와 다른 길이로 도는 리프(`cycle`), 레인마다 길이가 다른 드럼(`polymeter`), 곡 전체로 이어지는 주기(`align: song`)
    - 레퍼런스: MIDI 파일의 템포·박자·조성·마디별 코드 읽기와 스펙 변환(`midi`), 녹음의 템포·박 감지(`tempo`)
-5. **출력**: WAV(48 kHz 24-bit 기본) · 트랙별 스템 · MIDI · MusicXML 악보 · PDF 악보(MuseScore 설치 시) · Unity `SongJsonBuilder` 폴더
+5. **출력**: WAV(48 kHz 24-bit 기본) · 트랙별 스템 · MIDI · MusicXML 악보 · PDF 악보(MuseScore 설치 시) · Unity `SongJsonBuilder` 폴더 ·
+   **게임 연주용 MML**(마비노기 PC·모바일, 로스트아크: 트랙마다 `MML@멜로디,화음1,화음2;`, 글자 수 제한에 맞춰 마디 단위로 나눔, 드럼은 n코드)
 
 ## 설치
 

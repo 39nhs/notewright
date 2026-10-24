@@ -1,10 +1,10 @@
 {
   "name": "notewright",
-  "version": "0.3.4",
-  "description": "Compose, arrange and mix songs with the com.graze.music engine (playback V3) and export WAV, stems, MIDI, MusicXML/PDF score and Unity song folders. Checks the music before rendering (key, clashes, ranges), analyses every render (loudness, frequency bands, width, masking), generates accompaniment from chords, supports polymeter and reads reference MIDI and audio. Finds instruments automatically (built-in synths, VSCO 2 CE orchestral samples) or uses SFZ/WAV instruments on your computer; on Windows x64 also installed VST3 instruments and effects.",
+  "version": "0.3.5",
+  "description": "Compose, arrange and mix songs with the com.graze.music engine (playback V3) and export WAV, stems, MIDI, MusicXML/PDF score, Unity song folders and game MML (Mabinogi, Lost Ark). Checks the music before rendering (key, clashes, ranges), analyses every render (loudness, frequency bands, width, masking), generates accompaniment from chords, supports polymeter and reads reference MIDI and audio. Finds instruments automatically (built-in synths, VSCO 2 CE orchestral samples) or uses SFZ/WAV instruments on your computer; on Windows x64 also installed VST3 instruments and effects.",
   "author": {"name": "39nhs"},
   "homepage": "https://github.com/39nhs/notewright",
   "repository": "https://github.com/39nhs/notewright",
   "license": "GPL-3.0-only",
-  "keywords": ["music", "composition", "audio", "wav", "midi", "musicxml", "sfz", "vst3", "polymeter", "unity"]
+  "keywords": ["music", "composition", "audio", "wav", "midi", "musicxml", "sfz", "vst3", "polymeter", "mml", "mabinogi", "lostark", "unity"]
 }

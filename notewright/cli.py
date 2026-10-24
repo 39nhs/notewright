@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import __version__, catalog, engine, export, midi, midiread, musiccheck, musicxml, paths, spec as specs, synthkit
+from . import __version__, catalog, engine, export, midi, midiread, mml, musiccheck, musicxml, paths, spec as specs, synthkit
 from .notes import name as note_name
 
 EXAMPLES = paths.PLUGIN_DIR / "examples"
@@ -540,6 +540,8 @@ def cmd_render(args):
                 result["files"]["pdf"] = str(export.convert_score(xml, out_dir / f"{slug}.pdf"))
             except RuntimeError as error:
                 meta["warnings"].append(f"pdf: {error}")
+    if args.mml:
+        result["mml"] = _write_mml(meta, args.mml, args.mml_dynamics, out_dir, slug, result["files"])
     if args.unity:
         result["files"]["unity"] = str(export.unity_folder(song, meta, out_dir / "unity", slug))
     result["files"]["songJson"] = str(song_path)
@@ -567,6 +569,32 @@ def _hint(message):
         if re.search(pattern, message):
             return example
     return None
+
+
+def _write_mml(meta, games, dynamics, out_dir, slug, files):
+    """Writes <slug>.<game>.mml.txt per game; returns a summary per game (scores, character counts, warnings)."""
+    summary = {}
+    for game in (list(mml.GAMES) if "all" in games else games):
+        result = mml.score(meta, game, dynamics)
+        path = out_dir / f"{slug}.{game}.mml.txt"
+        path.write_text(mml.text_file(result, meta), encoding="utf-8")
+        files[f"mml-{game}"] = str(path)
+        summary[game] = {"scores": [{k: s[k] for k in ("track", "part", "of", "bars", "instrument", "chars", "notes", "fits")}
+                                    for s in result["scores"]], "warnings": result["warnings"], "about": result["about"]}
+    return summary
+
+
+def cmd_mml(args):
+    """Game MML from a spec (no renderer needed): Mabinogi, Mabinogi Mobile or Lost Ark."""
+    spec_path = Path(args.spec).resolve()
+    song, meta = _compile(spec_path)
+    slug = _slug(meta["title"])
+    out_dir = Path(args.out).resolve() if args.out else spec_path.parent / "out" / slug
+    out_dir.mkdir(parents=True, exist_ok=True)
+    files = {}
+    summary = _write_mml(meta, args.game, args.dynamics, out_dir, slug, files)
+    _print({"ok": True, "files": files, "mml": summary})
+    return 0
 
 
 def cmd_convert(args):
@@ -614,6 +642,8 @@ def main(argv=None):
     p.add_argument("--score-only", action="store_true", help="skip audio; write MIDI and MusicXML")
     p.add_argument("--pdf", action="store_true", help="also convert the score to PDF with MuseScore")
     p.add_argument("--unity", action="store_true", help="also write a Unity SongJsonBuilder folder (song.json + Samples + CREDITS)")
+    p.add_argument("--mml", nargs="+", choices=list(mml.GAMES) + ["all"], help="also write game MML: mabinogi, mabinogi-mobile, lostark or all")
+    p.add_argument("--mml-dynamics", choices=mml.DYNAMICS, default="coarse", help="MML volume changes: coarse (default, fewer characters), full, none")
     p = sub.add_parser("midi", help="read a MIDI file: tempo, meter, key, tracks, chords per bar; --spec writes an editable spec")
     p.add_argument("file")
     p.add_argument("--spec", help="also write the MIDI file as a spec to this path")
@@ -623,6 +653,11 @@ def main(argv=None):
     p.add_argument("--beats-per-bar", type=int, default=4)
     p.add_argument("--min", type=float, default=60, help="lowest BPM to consider")
     p.add_argument("--max", type=float, default=200, help="highest BPM to consider")
+    p = sub.add_parser("mml", help="game MML (Mabinogi, Mabinogi Mobile, Lost Ark) from a spec; no renderer needed")
+    p.add_argument("spec")
+    p.add_argument("--game", nargs="+", choices=list(mml.GAMES) + ["all"], default=["all"])
+    p.add_argument("--dynamics", choices=mml.DYNAMICS, default="coarse", help="volume changes: coarse (default), full, none")
+    p.add_argument("--out", help="output folder (default <spec folder>/out/<title>)")
     p = sub.add_parser("plugins", help="installed VST3 instruments and effects (Windows x64 only); --info NAME lists a plugin's parameters")
     p.add_argument("--info", metavar="NAME", help="load this plugin (name or class ID): parameter keys, values 0-1, latency, state")
     p.add_argument("--preset", help="with --info: read this .vstpreset into the state (for 'state' in the spec)")
@@ -638,10 +673,10 @@ def main(argv=None):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     args = parser.parse_args(argv)
     handlers = {"doctor": cmd_doctor, "setup": cmd_setup, "instruments": cmd_instruments, "new": cmd_new, "check": cmd_check, "render": cmd_render,
-                "convert": cmd_convert, "plugins": cmd_plugins, "midi": cmd_midi, "tempo": cmd_tempo}
+                "convert": cmd_convert, "plugins": cmd_plugins, "midi": cmd_midi, "tempo": cmd_tempo, "mml": cmd_mml}
     try:
         return handlers[args.command](args)
-    except (specs.SpecError, catalog.CatalogError, engine.EngineError, RuntimeError, FileNotFoundError, ValueError) as error:
+    except (specs.SpecError, catalog.CatalogError, engine.EngineError, mml.MmlError, RuntimeError, FileNotFoundError, ValueError) as error:
         out = {"ok": False, "error": str(error)}
         hint = _hint(str(error))
         if hint:
