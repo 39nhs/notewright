@@ -807,6 +807,101 @@ class Workflow(unittest.TestCase):
         self.assertIn("beat, duration", cli._hint("x: expected 'beat duration pitch[,pitch] [@velocity]'"))
 
 
+class Mml(unittest.TestCase):
+    """Game MML: the format, the limits, drums as n codes, and an exact round trip of the notes."""
+
+    def test_lengths_and_drum_maps(self):
+        from notewright import mml
+        self.assertEqual(mml._lengths(48), ["4"])
+        self.assertEqual(mml._lengths(72), ["4."])
+        self.assertEqual(sorted(mml._lengths(20)), ["12", "48"])                                 # greedy 18 + 2 would fail
+        self.assertEqual(sum(dict((t, v) for v, t in mml.LENGTHS)[t] for t in mml._lengths(1000 - 1000 % 3)), 999)
+        lost, mabi = mml.DRUM_N["lostark"], mml.DRUM_N["mabinogi"]
+        self.assertEqual((lost["kick"], lost["snare"], lost["closedHat"], lost["crash"], lost["rideBell"]), (53, 57, 69, 72, 77))
+        self.assertEqual((mabi["kick"], mabi["snare"], mabi["openHat"], mabi["ride"]), (29, 33, 43, 52))  # o2f o2a o3g o4e
+
+    def test_scores_round_trip(self):
+        import re
+        from notewright import mml
+        for name in ("pop", "orchestral", "mathrock"):
+            data = spec.load(PLUGIN / "examples" / f"{name}.json")
+            for alias, use in data["instruments"].items():          # no downloads here: the notes are what matters
+                if "vsco2:" in json.dumps(use) or "find:" in json.dumps(use):
+                    data["instruments"][alias] = "synth:pad"
+            _, meta = spec.compile(data)
+            for game in mml.GAMES:
+                result = mml.score(meta, game, "full")
+                self.assertTrue(all(s["fits"] for s in result["scores"]), (name, game))
+                for s in result["scores"]:
+                    self.assertRegex(s["mml"], r"^MML@[^,;]*(,[^,;]*){0,2};$")
+                    if game.startswith("mabinogi"):
+                        self.assertTrue(all(c <= limit for c, limit in zip(s["chars"], mml.GAMES[game]["parts"])))
+                    else:
+                        self.assertLessEqual(sum(s["chars"]), 5000)
+                        self.assertLessEqual(s["notes"], 1000)
+                for t in meta["tracks"]:
+                    scores = [x for x in result["scores"] if x["track"] == t["name"]]
+                    if not t["notes"] or not scores:
+                        continue
+                    if t["drums"]:
+                        codes = {int(n) for x in scores for n in re.findall(r"n(\d+)", x["mml"])}
+                        self.assertTrue(codes <= set(mml.DRUM_N["lostark" if game == "lostark" else "mabinogi"].values()), codes)
+                        self.assertFalse(re.search(r"[a-gA-G]", re.sub(r"MML@", "", scores[0]["mml"])))   # no note letters on drums
+                        continue
+                    layered = mml.voices(t["notes"], mml._grid(t["notes"]))
+                    want = sorted((v, round(a / 48, 4), round((e - a) / 48, 4), k) for v, voice in enumerate(layered) for a, e, k, _ in voice)
+                    got = sorted((v, round(b + meta["barStarts"][x["bars"][0] - 1], 4), round(d, 4), k)
+                                 for x in scores for v, part in enumerate(mml.parse(x["mml"])) for b, d, k, _ in part)
+                    self.assertEqual(want, got, (name, game, t["name"]))
+
+    def test_limits_split_into_parts_and_voices(self):
+        from notewright import mml
+        _, meta = spec.compile(spec.load(PLUGIN / "examples" / "pop.json"))
+        old = dict(mml.GAMES["mabinogi"])
+        try:
+            mml.GAMES["mabinogi"]["parts"] = (200, 150, 100)
+            result = mml.score(meta, "mabinogi")
+        finally:
+            mml.GAMES["mabinogi"] = old
+        drums = [s for s in result["scores"] if s["track"] == "drums"]
+        self.assertGreater(len(drums), 1)
+        self.assertTrue(all(s["fits"] for s in drums))
+        self.assertEqual([s["bars"][0] for s in drums][0], 1)
+        self.assertTrue(all(a["bars"][1] + 1 == b["bars"][0] for a, b in zip(drums, drums[1:])))
+        chords = tiny_spec(tracks={"lead": {"instrument": "lead"}, "drums": {"instrument": "drums"}},
+                           patterns={"beat": {"drums": {"kick": "x..."}}, "tune": {"notes": "0 4 C4,E4,G4,B4,D5"}})
+        result = mml.score(spec.compile(chords)[1], "lostark")
+        self.assertEqual([s["track"] for s in result["scores"] if s["track"].startswith("lead")], ["lead 1", "lead 2"])
+        self.assertTrue(any("need 2 scores" in w for w in result["warnings"]))
+
+    def test_tempo_change_inside_a_note_is_tied(self):
+        from notewright import mml
+        tempo = [(0, 120), (48, 90)]
+        text, notes = mml.write_voice([(0, 96, 60, .8)], 0, 96, tempo)
+        self.assertIn("t90&", text)
+        self.assertEqual(notes, 1)
+        self.assertEqual(mml.parse("MML@" + text + ";")[0], [[0, 2.0, 60, mml.parse("MML@" + text + ";")[0][0][3]]])
+
+    def test_cli_writes_files(self):
+        from notewright import cli
+        import io
+        import contextlib
+        folder = Path(tempfile.mkdtemp())
+        (folder / "s.json").write_text(json.dumps(tiny_spec()))
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.assertEqual(cli.main(["mml", str(folder / "s.json"), "--game", "lostark", "--out", str(folder / "out")]), 0)
+        result = json.loads(buffer.getvalue())
+        text = Path(result["files"]["mml-lostark"]).read_text(encoding="utf-8")
+        self.assertIn("MML@", text)
+        self.assertEqual({s["track"] for s in result["mml"]["lostark"]["scores"]}, {"lead", "drums"})
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cli.main(["render", str(folder / "s.json"), "--out", str(folder / "out2"), "--score-only", "--mml", "all"])
+        files = json.loads(buffer.getvalue())["files"]
+        self.assertEqual({k for k in files if k.startswith("mml-")}, {"mml-mabinogi", "mml-mabinogi-mobile", "mml-lostark"})
+
+
 class Manifest(unittest.TestCase):
     def test_version_matches_plugin_json(self):
         import notewright

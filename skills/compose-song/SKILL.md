@@ -100,6 +100,16 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
 | Sheet music | (default) / `--pdf` | `<title>.musicxml` (opens in MuseScore, Dorico, Finale, Sibelius); `--pdf` needs MuseScore installed. `convert a.musicxml a.pdf` converts later |
 | Unity | `--unity` | `unity/<title>.song.json` + `Samples/` + `CREDITS.md` for com.graze.music's `SongJsonBuilder` (+ `<title>.plugin-mod.json` for VST3 instruments) |
 | Audio only / score only | `--no-score` / `--score-only` | skip the other half |
+| Game MML | `--mml mabinogi mabinogi-mobile lostark` (or `all`), or `mml <spec> --game …` (no renderer needed) | `<title>.<game>.mml.txt`: one `MML@melody,chord1,chord2;` block per track, see below |
+
+**Game MML (Mabinogi, Mabinogi Mobile, Lost Ark).** Each track becomes one score for one player (Mabinogi scroll) or one Lost Ark
+track: three single-note voices (melody, chord 1, chord 2); chords are spread over them, a fourth simultaneous note needs a second
+score. Limits: Mabinogi melody 1200 / chord 1 800 / chord 2 500 characters, Mabinogi Mobile 2400 per part, Lost Ark 5000
+characters (all three) and 1000 notes per track, at most 10 tracks and 10 minutes. A score over the limit is split at bar lines into
+parts (the result lists `chars`, `notes`, `fits` and `bars`). Drums become the games' drum n codes (kick, snare, hats, toms,
+cymbals). For a song meant for MML, keep chords to three notes per track, prefer longer notes and fewer tracks, and avoid
+needless velocity changes (`--mml-dynamics coarse` is the default; `none` saves the most characters). Tell the user which game
+instrument each score suggests (`instrument`) and that every player starts together.
 
 ## Rules
 
