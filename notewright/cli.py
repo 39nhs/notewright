@@ -571,16 +571,24 @@ def _hint(message):
     return None
 
 
-def _write_mml(meta, games, dynamics, out_dir, slug, files):
-    """Writes <slug>.<game>.mml.txt per game; returns a summary per game (scores, character counts, warnings)."""
+def _write_mml(meta, games, dynamics, out_dir, slug, files, compare=None):
+    """Writes <slug>.<game>.mml.txt per game; returns a summary per game (scores, character counts, warnings). compare: the spec's
+    path, to also write <spec>.<game>.game.json next to it, a spec that plays the MML as the game reads it."""
     summary = {}
     for game in (list(mml.GAMES) if "all" in games else games):
         result = mml.score(meta, game, dynamics)
         path = out_dir / f"{slug}.{game}.mml.txt"
         path.write_text(mml.text_file(result, meta), encoding="utf-8")
         files[f"mml-{game}"] = str(path)
-        summary[game] = {"scores": [{k: s[k] for k in ("track", "part", "of", "bars", "instrument", "chars", "notes", "fits")}
-                                    for s in result["scores"]], "warnings": result["warnings"], "about": result["about"]}
+        summary[game] = {"scores": [{k: s[k] for k in ("track", "part", "of", "bars", "instrument", "chars", "notes", "nodes", "fits")}
+                                    for s in result["scores"]], "warnings": result["warnings"], "about": result["about"],
+                         "quantized": result["quantized"]}
+        if compare:
+            game_path = compare.with_name(f"{compare.stem}.{game}.game.json")
+            game_path.write_text(json.dumps(mml.game_spec(result, specs.load(compare), meta), indent=2, ensure_ascii=False) + "\n",
+                                 encoding="utf-8")
+            files[f"mml-{game}-spec"] = str(game_path)
+            summary[game]["compare"] = f"render {game_path.name} to hear the MML as the game plays it (the song's own WAV keeps the original timing)"
     return summary
 
 
@@ -592,7 +600,7 @@ def cmd_mml(args):
     out_dir = Path(args.out).resolve() if args.out else spec_path.parent / "out" / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     files = {}
-    summary = _write_mml(meta, args.game, args.dynamics, out_dir, slug, files)
+    summary = _write_mml(meta, args.game, args.dynamics, out_dir, slug, files, spec_path if args.compare else None)
     _print({"ok": True, "files": files, "mml": summary})
     return 0
 
@@ -658,6 +666,8 @@ def main(argv=None):
     p.add_argument("--game", nargs="+", choices=list(mml.GAMES) + ["all"], default=["all"])
     p.add_argument("--dynamics", choices=mml.DYNAMICS, default="coarse", help="volume changes: coarse (default), full, none")
     p.add_argument("--out", help="output folder (default <spec folder>/out/<title>)")
+    p.add_argument("--compare", action="store_true", help="also write <spec>.<game>.game.json next to the spec: the MML's own notes, "
+                   "lengths and tempo, to render and compare with the original")
     p = sub.add_parser("plugins", help="installed VST3 instruments and effects (Windows x64 only); --info NAME lists a plugin's parameters")
     p.add_argument("--info", metavar="NAME", help="load this plugin (name or class ID): parameter keys, values 0-1, latency, state")
     p.add_argument("--preset", help="with --info: read this .vstpreset into the state (for 'state' in the spec)")
