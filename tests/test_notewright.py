@@ -838,7 +838,7 @@ class Mml(unittest.TestCase):
                         self.assertTrue(all(c <= limit for c, limit in zip(s["chars"], mml.GAMES[game]["parts"])))
                     else:
                         self.assertLessEqual(sum(s["chars"]), 5000)
-                        self.assertLessEqual(s["notes"], 1000)
+                        self.assertLessEqual(s["nodes"], 1000)
                 for t in meta["tracks"]:
                     scores = [x for x in result["scores"] if x["track"] == t["name"]]
                     if not t["notes"] or not scores:
@@ -848,10 +848,10 @@ class Mml(unittest.TestCase):
                         self.assertTrue(codes <= set(mml.DRUM_N["lostark" if game == "lostark" else "mabinogi"].values()), codes)
                         self.assertFalse(re.search(r"[a-gA-G]", re.sub(r"MML@", "", scores[0]["mml"])))   # no note letters on drums
                         continue
-                    layered = mml.voices(t["notes"], mml._grid(t["notes"]))
+                    layered = mml.voices(t["notes"], mml._grid(t["notes"], mml.GAMES[game]["triplets"]))
                     want = sorted((v, round(a / 48, 4), round((e - a) / 48, 4), k) for v, voice in enumerate(layered) for a, e, k, _ in voice)
-                    got = sorted((v, round(b + meta["barStarts"][x["bars"][0] - 1], 4), round(d, 4), k)
-                                 for x in scores for v, part in enumerate(mml.parse(x["mml"])) for b, d, k, _ in part)
+                    got = sorted((v, round(b + x["start"], 4), round(d, 4), k)
+                                 for x in scores for v, part in enumerate(mml.parse(x["mml"], game)) for b, d, k, _ in part)
                     self.assertEqual(want, got, (name, game, t["name"]))
 
     def test_limits_split_into_parts_and_voices(self):
@@ -874,6 +874,41 @@ class Mml(unittest.TestCase):
         self.assertEqual([s["track"] for s in result["scores"] if s["track"].startswith("lead")], ["lead 1", "lead 2"])
         self.assertTrue(any("need 2 scores" in w for w in result["warnings"]))
 
+    def test_lostark_keeps_binary_lengths_only(self):
+        # Lost Ark drops notes and rests with lengths 3, 6, 12, 24 and 48 (seen in a score entered in the game and copied back).
+        import re
+        from notewright import mml
+        notes = [[bar * 4 + n / 3, 1 / 3, 60 + n % 7, .7] for bar in range(8) for n in range(12)]
+        meta = {"title": "t", "bpm": 156, "meter": 4, "loop": 32, "barStarts": list(range(0, 33, 4)),
+                "tempo": [{"Beat": 8, "Bpm": 187, "RampBeats": 0}, {"Beat": 16, "Bpm": 156, "RampBeats": 0}],
+                "tracks": [{"name": "piano", "instrument": "piano", "tags": [], "drums": False, "notes": notes},
+                           {"name": "drums", "instrument": "kit", "tags": [], "drums": True,
+                            "notes": [[b / 3, .5, 36 if b % 3 == 0 else 42, .8] for b in range(96)]}]}
+
+        def lengths(text):           # independent of mml.parse: every number after a note, rest or l
+            return {int(n) for n in re.findall(r"[a-gr][#+-]?(\d+)|l(\d+)", text.lower()) for n in n if n}
+
+        lost = mml.score(meta, "lostark", "none")
+        for s in lost["scores"]:
+            self.assertLessEqual(lengths(s["mml"]), {1, 2, 4, 8, 16, 32, 64}, s["mml"])
+            mml.parse(s["mml"], "lostark")                            # strict read: raises on anything the game would drop
+        piano = [n for s in lost["scores"] if s["track"] == "piano" for v in mml.parse(s["mml"]) for n in v]
+        want = sorted((round(b * 16) / 16, round((b + d) * 16) / 16 - round(b * 16) / 16, k) for b, d, k, _ in notes)
+        self.assertEqual(sorted((b, d, k) for b, d, k, _ in piano), want)    # absolute start and end on 64ths: no drift
+        drums = [s for s in lost["scores"] if s["track"] == "drums"]
+        self.assertFalse(any(re.search(r"[a-g&]", s["mml"][4:]) for s in drums))
+        self.assertEqual(sum(len(v) for s in drums for v in mml.parse(s["mml"])), 96)
+        tempo = [(b, bpm) for s in lost["scores"] for _, b, bpm in mml.read(s["mml"])["tempo"]]
+        self.assertEqual(tempo, [(0.0, 156), (8.0, 187), (16.0, 156)])           # once, in the first track's melody
+        self.assertFalse(any("#" in s["mml"] for s in lost["scores"]))         # the game's own sharp: c+
+        with self.assertRaises(mml.MmlError):
+            mml.parse("MML@c12;", "lostark")
+        mabi = mml.score(meta, "mabinogi", "none")                    # the other games keep triplets, in the same process
+        self.assertIn("l12", mabi["scores"][0]["mml"])
+        self.assertEqual(lost["scores"], mml.score(meta, "lostark", "none")["scores"])
+        self.assertGreater(lost["quantized"]["notes"], 0)
+        self.assertTrue(any("64th" in w for w in lost["warnings"]))
+
     def test_tempo_change_inside_a_note_is_tied(self):
         from notewright import mml
         tempo = [(0, 120), (48, 90)]
@@ -883,7 +918,7 @@ class Mml(unittest.TestCase):
         self.assertEqual(mml.parse("MML@" + text + ";")[0], [[0, 2.0, 60, mml.parse("MML@" + text + ";")[0][0][3]]])
 
     def test_cli_writes_files(self):
-        from notewright import cli
+        from notewright import cli, mml
         import io
         import contextlib
         folder = Path(tempfile.mkdtemp())
@@ -895,6 +930,13 @@ class Mml(unittest.TestCase):
         text = Path(result["files"]["mml-lostark"]).read_text(encoding="utf-8")
         self.assertIn("MML@", text)
         self.assertEqual({s["track"] for s in result["mml"]["lostark"]["scores"]}, {"lead", "drums"})
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.assertEqual(cli.main(["mml", str(folder / "s.json"), "--game", "lostark", "--out", str(folder / "out"), "--compare"]), 0)
+        game = json.loads(buffer.getvalue())["files"]["mml-lostark-spec"]
+        _, played = spec.compile(spec.load(game), folder)
+        self.assertEqual(sum(len(t["notes"]) for t in played["tracks"]),
+                         sum(len(v) for s in mml.score(spec.compile(tiny_spec())[1], "lostark")["scores"] for v in mml.parse(s["mml"])))
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             cli.main(["render", str(folder / "s.json"), "--out", str(folder / "out2"), "--score-only", "--mml", "all"])

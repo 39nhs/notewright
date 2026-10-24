@@ -111,6 +111,16 @@ cymbals). For a song meant for MML, keep chords to three notes per track, prefer
 needless velocity changes (`--mml-dynamics coarse` is the default; `none` saves the most characters). Tell the user which game
 instrument each score suggests (`instrument`) and that every player starts together.
 
+Each game has its own profile. **Lost Ark keeps only binary lengths** (1, 2, 4, 8, 16, 32, 64, dotted): notes and rests of 3, 6, 12,
+24 or 48 vanish when the score is entered, so its export puts every note's start and end on the 64th grid (triplets become the
+nearest 64ths, at most 1/32 beat off), writes sharps as `+`, and writes the tempo once, in the first track's melody (the game plays
+one BPM for the whole score; changes go there too). Mabinogi keeps triplet lengths and is unchanged. Every score is read back with
+the game's profile before it is written (`notes` = notes played, `nodes` = notes counting tied pieces and t/v commands, which is
+what the 1000-note check uses), and `quantized` / the warnings say how many notes the grid moved and by how much. The song's WAV
+plays the original timing: `mml <spec> --compare` writes `<spec>.<game>.game.json` next to the spec, a spec that plays the MML as
+the game reads it; render it to hear the difference. For triplet-heavy songs meant for Lost Ark, say that the triplets are
+approximated, and that only entering the score in the game and copying it back proves it.
+
 ## Rules
 
 - Use `playbackVersion` 3 (the default; see [reference/spec.md](reference/spec.md) "Playback V3 features"). Use 2 or 1 only to
