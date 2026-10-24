@@ -12,9 +12,12 @@ Each game has a profile (GAMES): the note lengths it keeps, the time grid and wh
 non-binary lengths (3, 6, 12, 24, 48: a score entered in the game and copied back lost them), so its profile allows only
 1, 2, 4, 8, 16, 32 and 64 (dotted where that stays on the grid) and quantizes every note's absolute start and end to 64ths; triplets
 become the nearest 64th positions. Lost Ark plays one BPM for the whole score, so tempo goes into the first track's melody only."""
+import bisect
 import math
 import re
 from fractions import Fraction
+
+from .notes import name as note_name
 
 TICKS = 48                                      # per beat (quarter note); a whole note = 192
 ALL_DENOMINATORS = (1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64)
@@ -75,16 +78,51 @@ INSTRUMENTS = {
 }
 
 
+# Game instrument ranges as MIDI keys (C4 = 60 = o4c). Lost Ark greys out the notes outside an instrument's range and does not play
+# them (official guide), but publishes no table: each bound says where it comes from, "seen" (greyed out in the game, from a screenshot)
+# or "reported" (players' notes, unverified; where "O4" may mean up to C4 or B4 the lower reading is used). Instruments missing here
+# are not checked, and the result says so instead of passing them.
+RANGES = {
+    "lostark": {"튜바": ((38, "seen"), (60, "reported")),          # D2-C4 ("O2 레~O4"); a score's C2 and C#2 were greyed out
+                "첼로": ((36, "reported"), (82, "reported")),      # o2c-o5a+
+                "피아노": ((36, "reported"), (96, "reported")),    # "O2~O7"
+                "플루트": ((59, "reported"), (101, "reported")),   # o3b-o7f
+                "하프": ((21, "reported"), (108, "reported"))},    # o0a-o8c
+}
+# Instruments to suggest instead when a track does not fit the first choice's range, in order.
+ALTERNATIVES = {"lostark": {"튜바": ("첼로", "피아노", "하프"), "첼로": ("튜바", "피아노", "하프"), "플루트": ("피아노", "하프"),
+                            "피아노": ("하프",)}}
+RANGE_POLICIES = ("warn", "octave")
+HOW = {"seen": "seen greyed out in the game", "reported": "players' report, unverified"}
+
+
 class MmlError(ValueError):
     pass
 
 
-def suggest_instrument(game, track):
+def playable(game, instrument):
+    """((lowest key, how known), (highest key, how known)) of a game instrument, or None when its range is not known here."""
+    return RANGES.get(game, {}).get(instrument)
+
+
+def _outside(keys, bounds):
+    return [k for k in keys if not bounds[0][0] <= k <= bounds[1][0]]
+
+
+def suggest_instrument(game, track, keys=None):
+    """The game instrument for a track, from its sample instrument and tags; given the track's keys, one whose known range holds them
+    (the first choice's alternatives are tried when notes fall outside it)."""
     words = " ".join([track["instrument"].lower()] + [t.lower() for t in track.get("tags", [])] + ["drum" if track["drums"] else ""])
-    for keys, name in INSTRUMENTS["lostark" if game == "lostark" else "mabinogi"]:
-        if any(k in words for k in keys):
-            return name
-    return "piano" if game != "lostark" else "피아노"
+    first = next((name for keys_, name in INSTRUMENTS["lostark" if game == "lostark" else "mabinogi"] if any(k in words for k in keys_)),
+                 "piano" if game != "lostark" else "피아노")
+    if not keys or track["drums"] or not playable(game, first) or not _outside(keys, playable(game, first)):
+        return first
+    best, fewest = first, len(_outside(keys, playable(game, first)))
+    for other in ALTERNATIVES.get(game, {}).get(first, ()):
+        count = len(_outside(keys, playable(game, other)))
+        if count < fewest:
+            best, fewest = other, count
+    return best
 
 
 def _tick(beat):
@@ -319,14 +357,22 @@ def _bpm_at(tempo, tick):
     return [bpm for t, bpm in tempo if t <= tick][-1]
 
 
-def score(meta, game, dynamics="coarse"):
+def score(meta, game, dynamics="coarse", instruments=None, range_policy="warn"):
     """{"game", "title", "about", "scores": [{"track", "source", "drums", "part", "of", "instrument", "mml", "chars": [...], "notes",
-    "nodes", "bars": [first, last], "start", "fits"}], "quantized": {...}, "warnings": [...]} for compiled spec metadata. Every score is
-    read back with the game's profile before it is returned: MmlError if it holds anything the game would not keep."""
+    "nodes", "bars": [first, last], "start", "end", "fits", "range"}], "quantized": {...}, "repairs": [...], "warnings": [...]} for
+    compiled spec metadata. Every score is read back with the game's profile before it is returned: MmlError if it holds anything the
+    game would not keep. instruments: {track: game instrument} instead of the suggestions. range_policy: "warn" keeps notes outside the
+    instrument's known range and reports them (the game does not play them); "octave" moves them by octaves into the range and lists
+    each move in "repairs" (from the spec's own notes, so exporting again never moves a note twice)."""
     if game not in GAMES:
         raise MmlError(f"MML game must be one of {', '.join(GAMES)}")
     if dynamics not in DYNAMICS:
         raise MmlError(f"MML dynamics must be one of {', '.join(DYNAMICS)}")
+    if range_policy not in RANGE_POLICIES:
+        raise MmlError(f"MML range policy must be one of {', '.join(RANGE_POLICIES)}")
+    unknown = set(instruments or {}) - {t["name"] for t in meta["tracks"]}
+    if unknown:
+        raise MmlError(f"--instrument names unknown tracks {sorted(unknown)} (tracks: {', '.join(t['name'] for t in meta['tracks'])})")
     rules = GAMES[game]
     tempo = _tempo_points(meta["bpm"], meta["tempo"])
     step = 1 if rules["triplets"] else 3                      # bar lines and the end on the profile's smallest note
@@ -336,7 +382,7 @@ def score(meta, game, dynamics="coarse"):
     end = int(round(_tick(meta["loop"]) / step)) * step
     if not bars or bars[-1] < end:
         bars.append(end)
-    warnings, scores = set(), []
+    warnings, scores, repairs = set(), [], []
     moved, total, worst = 0, 0, (0.0, 0.0)                    # notes the grid moved; the largest move (beats, ms)
     drum_map = DRUM_N["lostark" if game == "lostark" else "mabinogi"]
     tempo_written = False
@@ -355,6 +401,19 @@ def score(meta, game, dynamics="coarse"):
                 notes.append([beat, min(duration, .25), drum_map[sound], velocity])
             else:
                 notes.append([beat, duration, _pitched_key(key, warnings, f"track '{t['name']}'"), velocity])
+        instrument, bounds = _instrument(game, t, notes, instruments, warnings)
+        if bounds and range_policy == "octave":
+            lo, hi = bounds[0][0], bounds[1][0]
+            for n in notes:
+                key = n[2]
+                while key < lo and key + 12 <= hi:
+                    key += 12
+                while key > hi and key - 12 >= lo:
+                    key -= 12
+                if key != n[2]:
+                    repairs.append({"track": t["name"], "beat": round(n[0], 6), "from": n[2], "to": key, "delta": key - n[2],
+                                    "reason": f"outside {instrument} {note_name(lo)}-{note_name(hi)}"})
+                    n[2] = key
         grid = 3 if t["drums"] else _grid(notes, rules["triplets"])
         for beat, duration, _, _ in notes:
             total += 1
@@ -374,7 +433,22 @@ def score(meta, game, dynamics="coarse"):
             carry = 0 if rules["tempo"] == "first" and not tempo_written and g == 0 else None
             for segment in _segments(group, bars, end, tempo, t["drums"], drum_map, rules, dynamics, carry):
                 label = t["name"] if len(groups) == 1 else f"{t['name']} {g + 1}"
-                scores.append(dict(segment, track=label, source=t["name"], drums=t["drums"], instrument=suggest_instrument(game, t)))
+                a, b = _tick(segment["start"]), _tick(segment["end"])
+                keys = [e[2] for voice in group for e in voice if a <= e[0] < b]
+                scores.append(dict(segment, track=label, source=t["name"], drums=t["drums"], instrument=instrument,
+                                   range=_range_row(game, instrument, keys, bounds, t["drums"])))
+        if bounds:                                                # the final events, after every octave move and the grid
+            out = sorted((e[0], e[2]) for voice in layered for e in voice if not bounds[0][0] <= e[2] <= bounds[1][0])
+            if out:
+                below = sum(1 for _, k in out if k < bounds[0][0])
+                where = sorted({bisect.bisect_right(bars, tick) for tick, _ in out})
+                detail = ", ".join(x for x in (
+                    f"{below} below {note_name(bounds[0][0])} ({HOW[bounds[0][1]]})" if below else "",
+                    f"{len(out) - below} above {note_name(bounds[1][0])} ({HOW[bounds[1][1]]})" if len(out) > below else "") if x)
+                warnings.add(f"track '{t['name']}': {len(out)} of {sum(len(v) for v in layered)} notes are outside {instrument}'s range "
+                             f"({detail}), in bars {', '.join(map(str, where[:12]))}{'…' if len(where) > 12 else ''}: the game greys them "
+                             f"out and does not play them; move the part by octaves, choose another instrument "
+                             f"(--instrument \"{t['name']}=…\") or export with --range octave")
         tempo_written = True
     parts_of = {}
     for s in scores:
@@ -399,8 +473,47 @@ def score(meta, game, dynamics="coarse"):
         if len(tempo) > 1:
             warnings.add("Lost Ark plays one BPM for the whole score: the tempo and its changes are written in the first track's melody "
                          "only")
+    unchecked = [f"'{s['track']}' ({s['instrument']}, {s['range']['lowest']}-{s['range']['highest']})" for s in scores
+                 if s["range"].get("status") == "unknown" and s["part"] == 1]
+    if unchecked and game in RANGES:
+        warnings.add(f"instrument ranges not known here, not checked: {', '.join(unchecked)}; check in the game that no note is greyed out")
+    if repairs:
+        warnings.add(f"--range octave moved {len(repairs)} notes by octaves into their instruments' ranges (listed in 'repairs'); the spec "
+                     "keeps the original notes")
     return {"game": game, "title": rules["title"], "about": rules["about"], "scores": scores, "warnings": sorted(warnings),
-            "quantized": {"notes": moved, "of": total, "maxBeats": round(worst[0], 4), "maxMs": round(worst[1], 1)}}
+            "quantized": {"notes": moved, "of": total, "maxBeats": round(worst[0], 4), "maxMs": round(worst[1], 1)},
+            "repairs": repairs}
+
+
+def _instrument(game, track, notes, chosen, warnings):
+    """(game instrument, its known range or None) for a track: the user's choice, else the suggestion that fits the notes."""
+    if track["drums"]:
+        return suggest_instrument(game, track), None
+    keys = [n[2] for n in notes]
+    first = suggest_instrument(game, track)
+    instrument = (chosen or {}).get(track["name"]) or suggest_instrument(game, track, keys)
+    bounds = playable(game, instrument)
+    if instrument != first and not (chosen or {}).get(track["name"]):
+        outside = _outside(keys, playable(game, first))
+        warnings.add(f"track '{track['name']}': suggested {instrument} instead of {first}: {len(outside)} notes ({note_name(min(outside))}"
+                     f"-{note_name(max(outside))}) are outside {first}'s range {_span(playable(game, first))} (to keep {first}: "
+                     f"--instrument \"{track['name']}={first}\" --range octave)")
+    return instrument, bounds
+
+
+def _span(bounds):
+    return f"{note_name(bounds[0][0])}-{note_name(bounds[1][0])}"
+
+
+def _range_row(game, instrument, keys, bounds, drums):
+    if drums or not keys:
+        return {"status": "drums" if drums else "empty"}
+    row = {"lowest": note_name(min(keys)), "highest": note_name(max(keys))}
+    if bounds is None:
+        return dict(row, status="unknown")
+    outside = _outside(keys, bounds)
+    return dict(row, status="outside" if outside else "ok", playable=_span(bounds), outside=len(outside),
+                how=[bounds[0][1], bounds[1][1]])
 
 
 def _seconds(meta):
@@ -471,7 +584,7 @@ def _segments(group, bars, end, tempo, drums, drum_map, rules, dynamics="coarse"
         if plays or (carry is not None and texts[carry].count("t") > 1):    # skip parts with nothing to play (or tempo to carry)
             _check(texts, group, a, bars[stop], drums, rules)
             out.append({"mml": "MML@" + ",".join(texts) + ";", "chars": [len(t) for t in texts], "notes": count, "nodes": nodes,
-                        "bars": [start_index + 1, stop], "start": a / TICKS, "fits": _fits(texts, nodes, rules)})
+                        "bars": [start_index + 1, stop], "start": a / TICKS, "end": bars[stop] / TICKS, "fits": _fits(texts, nodes, rules)})
         start_index = stop
     return out
 
@@ -485,8 +598,12 @@ def text_file(result, meta):
         part = f" (part {s['part']}/{s['of']}, bars {s['bars'][0]}-{s['bars'][1]})" if s["of"] > 1 else ""
         size = "+".join(str(c) for c in s["chars"])
         count = f"{s['notes']} notes" + (f" ({s['nodes']} of {rules['notes']} counting ties, t and v)" if rules["notes"] else "")
-        lines += [f"## {s['track']}{part} — {s['instrument']} — {size} characters, {count}" + ("" if s["fits"] else " (OVER THE LIMIT)"),
-                  s["mml"], ""]
+        r = s.get("range") or {}
+        span = (f" — range {r['playable']}: {r['outside']} NOTES OUTSIDE, NOT PLAYED" if r.get("status") == "outside" else
+                f" — notes {r['lowest']}-{r['highest']} inside {r['playable']}" if r.get("status") == "ok" else
+                " — instrument range not checked" if r.get("status") == "unknown" and result["game"] in RANGES else "")
+        lines += [f"## {s['track']}{part} — {s['instrument']} — {size} characters, {count}" + ("" if s["fits"] else " (OVER THE LIMIT)")
+                  + span, s["mml"], ""]
     if result["warnings"]:
         lines += ["# Notes:"] + [f"# - {w}" for w in result["warnings"]]
     return "\n".join(lines) + "\n"
@@ -574,11 +691,15 @@ def game_spec(result, spec, meta):
     the original spec's instruments and track settings: render it to compare with the original WAV, which plays the original timing."""
     game, rules = result["game"], GAMES[result["game"]]
     kit = {n + 12: sound for sound, n in DRUM_N["lostark" if game == "lostark" else "mabinogi"].items()}
-    notes, tempo = {}, {}
+    notes, tempo, silent = {}, {}, 0
     for s in result["scores"]:
         back = read(s["mml"], game)
+        bounds = None if s["drums"] else playable(game, s["instrument"])
         for voice in back["voices"]:
             for b, d, k, v in voice:
+                if bounds and not bounds[0][0] <= k <= bounds[1][0]:
+                    silent += 1                                   # greyed out in the game: silent, the timeline stays
+                    continue
                 if v <= 0:
                     continue
                 notes.setdefault(s["source"], []).append([round(b + s["start"], 6), round(d, 6), GM_OF_SOUND[kit[k]] if s["drums"] else k,
@@ -592,7 +713,8 @@ def game_spec(result, spec, meta):
     out = {k: v for k, v in spec.items() if k not in _NOT_IN_GAME_SPEC}
     out["title"] = f"{meta['title']} ({rules['title']} MML)"
     out["description"] = (f"plays the {rules['title']} MML as the game reads it (notewright mml --compare); the original spec plays the "
-                          "original timing")
+                          "original timing" + (f"; {silent} notes outside their instruments' ranges are left out, as the game does not "
+                                                "play them" if silent else ""))
     if changes and changes[0][0] == 0:
         out["bpm"] = changes.pop(0)[1]
     if changes:
