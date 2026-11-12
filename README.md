@@ -68,7 +68,7 @@ claude.ai 채팅·Cowork에서는 **Customize → Plugins**에서 마켓플레�
 python3 notewright.py setup                               # 환경 점검·수정 + 렌더러 빌드와 시험 렌더(첫 실행 시 C# 컴파일러 자동 다운로드), 결과 캐시
 python3 notewright.py instruments find warm pad           # 악기 검색
 python3 notewright.py instruments scan ~/Samples/MyPiano  # 내 악기 등록
-python3 notewright.py new mysong.json --template pop      # 템플릿(pop, orchestral)
+python3 notewright.py new mysong.json --template bossa    # 템플릿(new만 치면 목록: pop, orchestral, mathrock, bossa, ambient, blues, folk68)
 python3 notewright.py check mysong.json                   # 컴파일 + 요약(렌더 없음)
 python3 notewright.py render mysong.json --stems --pdf --unity
 python3 notewright.py render mysong.json --section chorus # 일부만 빠르게
@@ -78,8 +78,12 @@ python3 notewright.py render mysong.json --section chorus # 일부만 빠르게
 
 스펙 형식과 작곡/믹싱 가이드: [compose-song 스킬](skills/compose-song/SKILL.md) ·
 [spec](skills/compose-song/reference/spec.md) · [instruments](skills/compose-song/reference/instruments.md) ·
-[mixing](skills/compose-song/reference/mixing.md) · [composition](skills/compose-song/reference/composition.md).
-예제: [pop.json](examples/pop.json) · [orchestral.json](examples/orchestral.json).
+[mixing](skills/compose-song/reference/mixing.md) · [composition](skills/compose-song/reference/composition.md) ·
+[styles](skills/compose-song/reference/styles.md).
+예제(스타일 카드별 템플릿): [pop](examples/pop.json) · [orchestral](examples/orchestral.json) · [mathrock](examples/mathrock.json) ·
+[bossa](examples/bossa.json) · [ambient](examples/ambient.json) · [blues](examples/blues.json) · [folk68](examples/folk68.json).
+예제의 템포·조·화성·악기는 그 카드의 선택일 뿐 기본값이 아닙니다. 스타일을 정하지 않은 곡(시험곡, 데모, "아무 곡")은
+[styles.md](skills/compose-song/reference/styles.md)의 스타일 카드를 먼저 고르고, 직전 곡과 축 4개 이상 다르게 만듭니다.
 
 ## 구조
 

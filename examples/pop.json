@@ -1,4 +1,7 @@
+// Style card O (synth-pop): 104 BPM 4/4, A minor, Am F C G, e-piano, pad, sub-bass and square lead, verse/chorus.
 // notewright song spec (JSON; // comments and trailing commas are allowed). Reference: skills/compose-song/reference/spec.md
+// Its values are this card's choices, not defaults: take tempo, key, meter, chords and sounds from your own card
+// (skills/compose-song/reference/styles.md).
 {
   "title": "Night Drive",
   "bpm": 104,

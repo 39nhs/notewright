@@ -1,0 +1,68 @@
+// Style card H (folk 6/8): dotted quarter 70, G mixolydian I–bVII–IV, pluck arpeggio, drone, frame drum, fiddle.
+// G mixolydian (I–bVII–IV: G F C), 6/8 felt in two (dotted quarter = 70, i.e.
+// 105 quarter-note BPM), a plucked guitar arpeggio, a reedy organ drone, a frame-drum grid in eighths and a fiddle-like lead.
+// Its values are this card's choices, not defaults: take tempo, key, meter, chords and sounds from your own card
+// (skills/compose-song/reference/styles.md).
+{
+  "title": "Fieldstone Wall",
+  "bpm": 105,
+  "meter": 3,
+  "key": "G mixolydian",
+
+  "instruments": {
+    "guitar": "synth:pluck",
+    "drone":  "synth:organ",
+    "fiddle": "synth:saw-lead",
+    "bass":   "synth:sub-bass",
+    "drums":  "synth:drum-kit"
+  },
+
+  "tracks": {
+    "drums":  {"instrument": "drums", "gain": 0.35},
+    "bass":   {"instrument": "bass", "layer": "Bass", "gain": 0.3, "release": 0.2},
+    "guitar": {"instrument": "guitar", "layer": "Harmony", "gain": 0.3, "pan": -0.3, "release": 0.4,
+               "sends": [{"bus": "barn", "db": -12}]},
+    "drone":  {"instrument": "drone", "layer": "Harmony", "gain": 0.1, "pan": 0.3, "attack": 0.6, "release": 1.2,
+               "effects": {"LowPassHz": 2500}},
+    "fiddle": {"instrument": "fiddle", "gain": 0.15, "pan": 0.1, "attack": 0.05, "release": 0.25, "vibratoRate": 5.5,
+               "effects": {"LowPassHz": 4500, "HighPassHz": 250}, "sends": [{"bus": "barn", "db": -8}]}
+  },
+
+  "buses": {"barn": {"effects": {"Reverb": true, "ReverbMix": 1, "ReverbSize": 0.55, "ReverbDamping": 0.55}}},
+
+  "meterChanges": [{"bar": 1, "numerator": 6, "denominator": 8, "grouping": "3+3"}],
+
+  "patterns": {
+    // eighth-note grid (step 0.5): two dotted-quarter pulses per 6/8 bar
+    "frame": {"bars": 1, "step": 0.5, "drums": {"kick": "x..x..", "rim": "..x..x", "tambourine": "xoo xoo"}},
+    // a 4-bar tune in eighths and dotted quarters, F natural = the mixolydian b7
+    "tune":  {"bars": 4, "melody": "D5:0.5 B4 G4 A4:1.5 | B4:0.5 C5 D5 F5:1.5 | E5:0.5 D5 C5 B4:0.5 A4 G4 | B4:3"},
+    // the drone: open fifths as plain notes (written chords would also fill the song's chord track)
+    "hum":   {"bars": 1, "notes": "0 3 G3,D4 @0.7"},
+    "hum2":  {"bars": 2, "notes": "0 3 C4,G4 @0.7 | 3 3 G3,D4 @0.7"},
+    "tune2": {"bars": 4, "melody": "D5:0.5 E5 F5 G5:1.5 | F5:0.5 E5 D5 C5:1.5 | B4:0.5 C5 D5 A4:0.5 B4 F4 | G4:3"}
+  },
+
+  "sections": [
+    {"name": "drone", "bars": 2, "play": {"drone": "hum"}},
+    {"name": "verse", "bars": 8, "play": {
+      "drone":  "hum",
+      "guitar": {"chords": "G F C G", "as": "arp", "order": "up", "rate": 0.5, "octaves": 1, "range": ["G3", "G4"]},
+      "bass":   {"chords": "G F C G", "as": "bass", "style": "root", "rhythm": "x..x..", "step": 0.5, "register": "G2"},
+      "drums":  "frame",
+      "fiddle": ["tune", "tune2"]}},
+    {"name": "lift", "bars": 8, "play": {
+      "drone":  "hum2",
+      "guitar": {"chords": "C G F G", "as": "arp", "order": "upDown", "rate": 0.5, "octaves": 2, "range": ["G3", "C5"]},
+      "bass":   {"chords": "C G F G", "as": "bass", "style": "rootFifth", "rhythm": "x..x..", "step": 0.5, "register": "G2"},
+      "drums":  "frame",
+      "fiddle": ["tune2", "tune"]}},
+    {"name": "close", "bars": 2, "play": {
+      "guitar": {"chords": "G:2", "as": "arp", "order": "down", "rate": 1, "octaves": 1, "range": ["G3", "G4"]},
+      "drone":  "hum"}}
+  ],
+
+  "masterAutomation": {"volume": [{"bar": 1, "value": -30}, {"bar": 3, "value": 0, "curve": "smooth"},
+                                  {"section": "close", "value": 0}, {"section": "close", "bar": 3, "value": -40, "curve": "smooth"}]},
+  "targetLufs": -16
+}

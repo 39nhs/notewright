@@ -1,4 +1,7 @@
-// notewright example: accompaniment generated from chords, a 5/8 riff over 4/4 (polymeter), a 7/8 section whose drum groove
+// Style card G (progressive 7/8): 138 BPM, E minor, a 5/8 riff over 4/4 and a 7/8 section, generated accompaniment.
+// Its values are this card's choices, not defaults: take tempo, key, meter, chords and sounds from your own card
+// (skills/compose-song/reference/styles.md).
+// Accompaniment generated from chords, a 5/8 riff over 4/4 (polymeter), a 7/8 section whose drum groove
 // follows the 2+2+3 grouping, and drum lanes of different lengths. Reference: skills/compose-song/reference/spec.md
 {
   "title": "Prime Numbers",

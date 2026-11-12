@@ -254,8 +254,22 @@ def _root(value):
     return key
 
 
+def _templates():
+    """{name: what the template is (its first comment line)} for every example."""
+    out = {}
+    for path in sorted(EXAMPLES.glob("*.json")):
+        first = path.read_text(encoding="utf-8").splitlines()[0]
+        out[path.stem] = re.sub(r"^//\s*", "", first)
+    return out
+
+
 def cmd_new(args):
     target = Path(args.path)
+    if not args.template:                   # no default: a default template is copied into every song (styles.md)
+        _print({"ok": False, "error": "choose a template with --template: the one nearest the style card you picked "
+                 "(skills/compose-song/reference/styles.md); its values are samples to change, not defaults",
+                 "templates": _templates()})
+        return 2
     if target.exists() and not args.force:
         raise SystemExit(f"{target} exists (use --force to overwrite)")
     template = EXAMPLES / f"{args.template}.json"
@@ -557,10 +571,10 @@ HINTS = [
     (r"is not a note|is not a pitch", '"C4", "F#3", "Bb2", "60", or a drum name like "kick", "snare", "hat"'),
     (r"a point is|expected a list of points", '[{"bar": 1, "value": -30}, {"bar": 3, "value": 0, "curve": "smooth"}]  or  [[0, -30], [8, 0, "linear"]]'),
     (r"give 'bars' \(or 'beats'\)", '{"name": "verse", "bars": 8, "play": {"drums": "beat", "bass": "bassline"}}'),
-    (r"unknown chord", '"chords": "Am F C G7"  or numerals in the song key: "i VI III VII", "I V vi IV"; ":2" = two slots, "-" holds'),
+    (r"unknown chord", '"chords": "Dm9 G7 Cmaj7 A7b9"  → names like Dm9, F#m7b5, C/E, Bb5, or numerals in the song key: "ii7 V7 Imaj7", "i bVII bVI"; ":2" = two slots, "-" holds'),
     (r"unknown pattern", '"patterns": {"riff": {"melody": "A4:0.5 C5 E5 r:0.5"}}  then play it with "riff"'),
     (r"'groove'", '{"groove": "rock", "fill": 4}  on a drum track; grooves: rock, fourOnFloor, halfTime, breakbeat, metal, shuffle'),
-    (r"unknown key '", '"key": "A minor"  (or "F# dorian", "Bb", "C#m")'),
+    (r"unknown key '", '"key": "E phrygian"  (or "Bb major", "F# dorian", "G mixolydian", "C#m")'),
     (r"unknown keys \[", "check the spelling: valid keys are listed in the message"),
 ]
 
@@ -642,7 +656,7 @@ def main(argv=None):
     p.add_argument("--root", default="C4", help="add: the note the sample plays")
     p = sub.add_parser("new", help="start a spec from a template")
     p.add_argument("path")
-    p.add_argument("--template", default="pop")
+    p.add_argument("--template", help="the example nearest your style card (run 'new <path>' alone to list them)")
     p.add_argument("--force", action="store_true")
     p = sub.add_parser("check", help="compile a spec without rendering; prints a summary and warnings")
     p.add_argument("spec")

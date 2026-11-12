@@ -1,0 +1,63 @@
+// Style card I (blues shuffle): 96 BPM swung, 12-bar blues in Bb, walking bass, rock organ, driven lead.
+// A 12-bar blues in Bb with dominant 7th chords, swung eighths (swing 0.33),
+// the shuffle groove, a walking bass, a rock organ and a driven lead that answers itself (call and response with b3 and b7).
+// Its values are this card's choices, not defaults: take tempo, key, meter, chords and sounds from your own card
+// (skills/compose-song/reference/styles.md).
+{
+  "title": "Rust On The Rails",
+  "bpm": 96,
+  "meter": 4,
+  "key": "Bb blues",
+  "swing": 0.33,
+  "swingGrid": 0.5,
+
+  "instruments": {
+    "organ": {"synthPreset": "Rock organ"},
+    "bass":  {"synthPreset": "FM bass"},
+    "lead":  "synth:saw-lead",
+    "drums": "synth:drum-kit"
+  },
+
+  "tracks": {
+    "drums": {"instrument": "drums", "gain": 0.45},
+    "bass":  {"instrument": "bass", "layer": "Bass", "gain": 0.45, "release": 0.1},
+    "organ": {"instrument": "organ", "layer": "Harmony", "gain": 0.18, "pan": -0.25, "release": 0.2,
+              "effects": {"Chorus": true, "ChorusMix": 0.25, "Drive": true, "DriveDb": 4}},
+    "lead":  {"instrument": "lead", "gain": 0.16, "pan": 0.2, "release": 0.15, "drive": 0.4,
+              "effects": {"LowPassHz": 3800}, "sends": [{"bus": "spring", "db": -9}]}
+  },
+
+  "buses": {"spring": {"effects": {"Reverb": true, "ReverbMix": 1, "ReverbSize": 0.35, "ReverbDamping": 0.7}}},
+
+  "patterns": {
+    // call (bars 1-2) and answer (bars 3-4): Db = b3, Ab = b7 against Bb7
+    "call":   {"bars": 4, "melody": "r:1 F5:0.5 Ab5:0.5 Bb5:1 Ab5:0.5 F5:0.5 | Db5:1 Bb4:2 r:1 | r:2 F5:0.5 Eb5:0.5 Db5:0.5 Bb4:0.5 | Bb4:3 r:1"},
+    // turnaround over F7 Eb7 Bb7 F7
+    "turn":   {"bars": 4, "melody": "r:1 C5:0.5 Eb5:0.5 F5:2 | r:1 Eb5:0.5 Db5:0.5 Bb4:2 | F4:0.5 Ab4:0.5 Bb4:1 D5:0.5 Bb4:1.5 | A4:2 C5:1 r:1"},
+    "answer": {"bars": 4, "melody": "r:1 Eb5:0.5 Gb5:0.5 G5:1 Gb5:0.5 Eb5:0.5 | Db5:1 Bb4:2 r:1 | r:1 C5:0.5 Eb5:0.5 F5:1 Ab5:1 | F5:2 Db5:1 Bb4:1"}
+  },
+
+  "sections": [
+    {"name": "pickup", "bars": 2, "play": {
+      "organ": {"chords": "F7:2", "voices": 4, "range": ["Eb3", "C5"], "rhythm": "x-.x", "step": 1},
+      "drums": {"groove": "shuffle", "fill": 2}}},
+    {"name": "chorus1", "bars": 12, "play": {
+      "organ": {"chords": "Bb7 Eb7 Bb7 Bb7 Eb7 Eb7 Bb7 Bb7 F7 Eb7 Bb7 F7", "voices": 4, "range": ["Eb3", "C5"], "rhythm": ".x.x", "step": 1},
+      "bass":  {"chords": "Bb7 Eb7 Bb7 Bb7 Eb7 Eb7 Bb7 Bb7 F7 Eb7 Bb7 F7", "as": "bass", "style": "walking", "register": "Bb1"},
+      "drums": {"groove": "shuffle", "fill": 4, "variation": 0.3, "seed": 5},
+      "lead":  ["call", "answer", "turn"]}},
+    {"name": "chorus2", "bars": 12, "play": {
+      "organ": {"chords": "Bb7 Eb7 Bb7 Bb7 Eb7 Eb7 Bb7 Bb7 F7 Eb7 Bb7 F7", "voices": 4, "range": ["F3", "D5"], "rhythm": "x-x-", "step": 1},
+      "bass":  {"chords": "Bb7 Eb7 Bb7 Bb7 Eb7 Eb7 Bb7 Bb7 F7 Eb7 Bb7 F7", "as": "bass", "style": "walking", "register": "Bb1"},
+      "drums": {"groove": "shuffle", "fill": 4, "variation": 0.4, "seed": 9},
+      "lead":  ["call", "answer", "turn"]}},
+    {"name": "ending", "bars": 2, "play": {
+      "organ": {"chords": "Bb7:2", "voices": 5, "range": ["D3", "D5"]},
+      "bass":  {"chords": "Bb7:2", "as": "bass", "style": "root", "register": "Bb1"}}}
+  ],
+
+  "masterAutomation": {"volume": [{"bar": 1, "value": -24}, {"bar": 3, "value": 0, "curve": "smooth"},
+                                  {"section": "ending", "value": 0}, {"section": "ending", "bar": 3, "value": -40, "curve": "smooth"}]},
+  "master": {"Compressor": true, "ThresholdDb": -14, "Ratio": 2},
+  "targetLufs": -14
+}
