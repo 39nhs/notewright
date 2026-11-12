@@ -1,4 +1,7 @@
-// Orchestral cue with VS Chamber Orchestra 2 CE samples (CC0). The first render downloads only the samples it needs.
+// Style card K (orchestral): 80 BPM 3/4, D major, strings, harp, horn, flute and timpani, a slowing tempo ramp.
+// VS Chamber Orchestra 2 CE samples (CC0). The first render downloads only the samples it needs.
+// Its values are this card's choices, not defaults: take tempo, key, meter, chords and sounds from your own card
+// (skills/compose-song/reference/styles.md).
 {
   "title": "First Light",
   "bpm": 80,

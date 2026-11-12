@@ -1,0 +1,81 @@
+// Style card B (bossa nova): 138 BPM two-beat feel, F major ii–V chains, rim clave, pluck comping, soft mix.
+// The ii–V chains use 7th chords and m7b5; a 2-bar clave on the rim, a nylon-like pluck comping on the off-beats and a
+// root–fifth bass.
+// Its values are this card's choices, not defaults: take tempo, key, meter, chords and sounds from your own card
+// (skills/compose-song/reference/styles.md).
+{
+  "title": "Harbour Window",
+  "bpm": 138,
+  "meter": 4,
+  "key": "F major",
+
+  "instruments": {
+    "keys":   {"synthPreset": "FM e-piano"},
+    "guitar": "synth:pluck",
+    "bass":   {"synthPreset": "FM bass"},
+    "flute":  {"synthPreset": "Wavetable vox"},
+    "drums":  "synth:drum-kit"
+  },
+
+  "tracks": {
+    "drums":  {"instrument": "drums", "gain": 0.32},
+    "bass":   {"instrument": "bass", "layer": "Bass", "gain": 0.42, "release": 0.12},
+    "guitar": {"instrument": "guitar", "layer": "Harmony", "gain": 0.24, "pan": -0.3, "release": 0.25,
+               "sends": [{"bus": "room", "db": -12}]},
+    "keys":   {"instrument": "keys", "layer": "Harmony", "gain": 0.16, "pan": 0.25, "release": 0.6,
+               "effects": {"Chorus": true, "ChorusMix": 0.3}, "sends": [{"bus": "room", "db": -10}]},
+    "flute":  {"instrument": "flute", "gain": 0.2, "pan": 0.05, "attack": 0.04, "release": 0.3,
+               "sends": [{"bus": "room", "db": -6}]}
+  },
+
+  "buses": {"room": {"effects": {"Reverb": true, "ReverbMix": 1, "ReverbSize": 0.45, "ReverbDamping": 0.6}}},
+
+  "patterns": {
+    // two bars: 3-2 clave on the rim, quiet eighth hats, the kick on 1 and the "and" of 2
+    "bossa": {"bars": 2, "drums": {"kick": "x.....x.x.....x. x.....x.x.....x.",
+                                   "rim":  "x..x..x.....x.x. ..x.x...x..x....",
+                                   "hat":  "o.g.o.g.o.g.o.g. o.g.o.g.o.g.o.g."}},
+    // A theme over Gm7 C7 | Fmaj7 Dm7 | Gm7 C7 | Am7 D7 (4 bars, repeated)
+    "themeA": {"bars": 4, "melody": "D5:1.5 C5:0.5 Bb4:1 A4:1 | G4:1.5 A4:0.5 C5:2 | Bb4:1 A4:0.5 G4:0.5 E4:1 C5:1 | E5:3 r:1"},
+    "themeA2": {"bars": 4, "melody": "D5:1.5 C5:0.5 Bb4:1 A4:1 | G4:1.5 A4:0.5 C5:2 | Bb4:1 A4:0.5 G4:0.5 E4:1 G4:1 | F4:3 r:1"},
+    "themeA3": {"bars": 4, "melody": "F5:1.5 E5:0.5 D5:1 C5:1 | Bb4:1 A4:0.5 G4:0.5 C5:2 | Bb4:1 G4:0.5 E4:0.5 C4:1 E4:1 | F4:2 r:2"},
+    // bridge over Bbmaj7 | Em7b5 A7 | Dm7 G7 | Gm7 C7
+    "themeB": {"bars": 4, "melody": "F4:1 D5:1 F5:2 | E5:1 D5:0.5 C#5:2.5 | D5:1 F5:1 A5:1 G5:1 | F5:2 E5:1 r:1"}
+  },
+
+  "sections": [
+    {"name": "intro", "bars": 2, "play": {
+      "guitar": {"chords": "Fmaj7 Gm7:0.5 C7:0.5", "rhythm": "x.ox.o.x", "step": 0.5, "voices": 4, "range": ["F3", "D5"]}}},
+    {"name": "A", "bars": 8, "play": {
+      "drums":  "bossa",
+      "bass":   {"chords": "Gm7:0.5 C7:0.5 Fmaj7:0.5 Dm7:0.5 Gm7:0.5 C7:0.5 Am7:0.5 D7:0.5", "as": "bass", "style": "rootFifth",
+                 "rhythm": "x..ox..o", "step": 0.5, "register": "F2"},
+      "guitar": {"chords": "Gm7:0.5 C7:0.5 Fmaj7:0.5 Dm7:0.5 Gm7:0.5 C7:0.5 Am7:0.5 D7:0.5", "rhythm": "x.ox.o.x", "step": 0.5,
+                 "voices": 4, "range": ["F3", "D5"]},
+      "flute":  ["themeA", "themeA2"]}},
+    {"name": "B", "bars": 8, "play": {
+      "drums":  "bossa",
+      "bass":   {"chords": "Bbmaj7 Em7b5:0.5 A7:0.5 Dm7:0.5 G7:0.5 Gm7:0.5 C7:0.5", "as": "bass", "style": "rootFifth",
+                 "rhythm": "x..ox..o", "step": 0.5, "register": "F2"},
+      "keys":   {"chords": "Bbmaj7 Em7b5:0.5 A7:0.5 Dm7:0.5 G7:0.5 Gm7:0.5 C7:0.5", "voices": 4, "range": ["A3", "E5"],
+                 "rhythm": "x---", "step": 1},
+      "guitar": {"chords": "Bbmaj7 Em7b5:0.5 A7:0.5 Dm7:0.5 G7:0.5 Gm7:0.5 C7:0.5", "rhythm": "x.ox.o.x", "step": 0.5,
+                 "voices": 4, "range": ["F3", "D5"]},
+      "flute":  "themeB"}},
+    {"name": "A2", "bars": 8, "play": {
+      "drums":  "bossa",
+      "bass":   {"chords": "Gm7:0.5 C7:0.5 Fmaj7:0.5 Dm7:0.5 Gm7:0.5 C7:0.5 Am7:0.5 D7:0.5", "as": "bass", "style": "rootFifth",
+                 "rhythm": "x..ox..o", "step": 0.5, "register": "F2"},
+      "guitar": {"chords": "Gm7:0.5 C7:0.5 Fmaj7:0.5 Dm7:0.5 Gm7:0.5 C7:0.5 Am7:0.5 D7:0.5", "rhythm": "x.ox.o.x", "step": 0.5,
+                 "voices": 4, "range": ["F3", "D5"]},
+      "keys":   {"chords": "Gm7:0.5 C7:0.5 Fmaj7:0.5 Dm7:0.5 Gm7:0.5 C7:0.5 Am7:0.5 D7:0.5", "voices": 3, "range": ["C4", "G5"],
+                 "rhythm": "..x.", "step": 1, "velocity": 0.6},
+      "flute":  ["themeA", "themeA3"]}},
+    {"name": "outro", "bars": 2, "play": {
+      "guitar": {"chords": "Fmaj7:2", "rhythm": "x---", "step": 1, "voices": 5, "range": ["F3", "E5"]},
+      "keys":   {"chords": "Fmaj7:2", "voices": 4, "range": ["A3", "E5"]}}}
+  ],
+
+  "masterAutomation": {"volume": [{"section": "outro", "value": 0}, {"section": "outro", "bar": 3, "value": -40, "curve": "smooth"}]},
+  "targetLufs": -16
+}

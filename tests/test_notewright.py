@@ -277,6 +277,34 @@ class Spec(unittest.TestCase):
 
 
 class Cli(unittest.TestCase):
+    def test_new_lists_templates_instead_of_a_default(self):
+        # a default template ends up copied into every song: 'new' without --template lists them (one line each, the style card)
+        from notewright import cli
+        import io
+        import contextlib
+        folder = Path(tempfile.mkdtemp())
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.assertEqual(cli.main(["new", str(folder / "a.json")]), 2)
+        listing = json.loads(buffer.getvalue())["templates"]
+        self.assertGreaterEqual(len(listing), 7)
+        self.assertTrue(all(line.startswith("Style card ") for line in listing.values()), listing)
+        self.assertFalse((folder / "a.json").exists())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(["new", str(folder / "b.json"), "--template", "folk68"]), 0)
+        self.assertIn("Style card H", (folder / "b.json").read_text(encoding="utf-8"))
+
+    def test_examples_are_different_songs(self):
+        # every example is its own style: no two share tempo, key and meter, and none but pop is the pop defaults
+        seen = set()
+        for path in (PLUGIN / "examples").glob("*.json"):
+            data = spec.load(path)
+            signature = (data.get("bpm"), data.get("key"), data.get("meter"), json.dumps(data.get("meterChanges")))
+            self.assertNotIn(signature, seen, path.name)
+            seen.add(signature)
+            if path.stem != "pop":
+                self.assertFalse(data.get("bpm") == 104 and data.get("key") == "A minor", path.name)
+
     def test_utf8_output_on_any_code_page(self):
         """Piped output on a Korean Windows console is cp949; the JSON must still be written (as UTF-8)."""
         import io
@@ -767,6 +795,21 @@ class MusicCheck(unittest.TestCase):
         self.assertTrue(any("exactly the same notes" in n for n in report["notes"]), report)
         clean = musiccheck.check(spec.compile(tiny_spec(key="C major"))[1])
         self.assertEqual(clean["issues"], [])
+
+    def test_modes_and_blues_are_not_flagged_as_the_wrong_key(self):
+        # key detection knows major and minor only: a song in a mode must not be told its key is wrong (styles.md asks for modes),
+        # and a blues uses its chords' major thirds over the blues scale
+        from notewright import musiccheck
+        def song(key, melody):
+            return spec.compile(tiny_spec(key=key, patterns={"beat": {"drums": {"kick": "x...x...x...x..."}}, "tune": {"melody": melody}},
+                                          sections=[{"name": "a", "bars": 4, "play": {"lead": "tune", "drums": "beat"}}]))[1]
+        lydian = musiccheck.check(song("D lydian", "D5:2 A4:2 | F#5:2 D5:1 G#4:0.5 A4:0.5 | D5:2 F#5:1 E5:1 | D5:4"))
+        self.assertEqual(lydian["key"]["detected"], "D major")                 # what the old check called a wrong key
+        self.assertEqual(lydian["issues"], [])
+        blues = musiccheck.check(song("Bb blues", "Bb4:1 D5 F5 Ab5 | Eb5:1 G5 Bb5 Db5 | F5:1 A5 C5 Eb5 | Bb4:4"))
+        self.assertEqual(blues["issues"], [])
+        wrong = musiccheck.check(song("D major", "D5:1 F5 A5 F5 | C5:1 Eb5 G5 Eb5 | Bb4:1 D5 F5 D5 | D5:4"))
+        self.assertTrue(any("outside D major" in i for i in wrong["issues"]), wrong)   # major and minor are still checked
 
 
 class MidiRead(unittest.TestCase):

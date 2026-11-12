@@ -1,14 +1,21 @@
 # Composition notes
 
-Write music, not just notes: decide form, harmony, melody and groove first, then encode them as patterns.
+Write music, not just notes: decide form, harmony, melody and groove first, then encode them as patterns. Unless the brief fixes
+the style, start from a style card in [styles.md](styles.md) and say which; the lists below are menus to choose from, and their
+first entries are not defaults.
 
 ## Plan before writing
 
-1. **Form** with bar counts (multiples of 4/8): e.g. intro 4 · verse 8 · pre 4 · chorus 8 · verse 8 · chorus 8 · bridge 8 ·
-   chorus 8 · outro 4. Game BGM loops: no intro/outro, last bar leads back into the first.
-2. **Harmony**: choose a key and a progression per section (pop: I–V–vi–IV, vi–IV–I–V; minor: i–VI–III–VII, i–iv–v;
-   jazz/lo-fi: ii7–V7–Imaj7 with 7ths/9ths; epic: i–VI–III–VII, i–VI–iv–V). Change something in the chorus (harmonic rhythm,
-   register, inversion).
+1. **Form** with bar counts: verse/chorus (e.g. intro 4 · verse 8 · pre 4 · chorus 8 · … · outro 4), AABA (8 bars each, a
+   contrasting B), 12-bar blues choruses, through-composed ambient sections of 8-16 bars, 6- or 12-bar phrases for variety.
+   Game BGM loops: no intro/outro, last bar leads back into the first.
+2. **Harmony**: choose a key or mode and a progression per section, and how often chords change (two per bar, one per bar, one
+   per two bars). Menu, in no order:
+   - major: I–V–vi–IV, IV–V–iii–vi, I–iii–IV–iv; minor: i–VI–III–VII, i–iv–v, i–bVII–bVI–V (Andalusian)
+   - modes: dorian i–IV, mixolydian I–bVII–IV, lydian I–II, phrygian i–bII, aeolian i–bVI–bVII
+   - 7th/9th colours: ii7–V7–Imaj7, iii7–VI7–ii7–V7, Imaj7–IVmaj7, Dm9–G9–Cmaj7, minor ii–V (iiø7–V7–i)
+   - blues: 12-bar I7–IV7–I7–I7–IV7–IV7–I7–I7–V7–IV7–I7–V7; epic: i–VI–III–VII, i–VI–iv–V
+   Change something in the chorus or B section (harmonic rhythm, register, inversion, a key change).
 3. **Melody**: a short motif (2–4 notes rhythm idea) developed by repetition and variation; stepwise motion with occasional
    leaps; chord tones on strong beats; phrase in 2- or 4-bar units with question/answer; peak note near the chorus climax.
    Keep it singable (about an octave and a half).
@@ -58,8 +65,8 @@ When the user asks for something else (an homage in mood only, a cover, an origi
 ## Accompaniment from chords
 
 Write the hook and melody yourself; let generators write the accompaniment from the chords (fewer wrong notes, faster to change):
-`{"chords": "Am F C G"}` for a voiced pad or keys, `"as": "bass"` for the bass line, `"as": "arp"` for an arpeggio, and
-`{"groove": "rock"}` for drums ([spec.md](spec.md#generated-parts-chords-bass-arpeggio-drum-groove)). Change the progression in one
+`{"chords": "Dm9 G9 Cmaj7:2"}` for a voiced pad or keys, `"as": "bass"` for the bass line, `"as": "arp"` for an arpeggio, and
+`{"groove": "shuffle"}` (or another style) for drums ([spec.md](spec.md#generated-parts-chords-bass-arpeggio-drum-groove)). Change the progression in one
 place by giving every generator the same string. `check` then reports melody notes that clash with the chords.
 
 ## Odd meters and polymeter
@@ -87,6 +94,11 @@ riff with its own `cycle` over steady bars (`"cycle": 2.5` against 4/4 lines up 
 | Trap (half time, bpm 130–150) | `x.........x.....` | `........x.......` | `xxxxxxxxx.x.xxxx` + rolls `step: 1/6` |
 | Drum & bass (170+) | `x.........x.....` | `....x.......x...` | `x.x.x.x.x.x.x.x.` |
 | Waltz 3/4 | `x...........` | `....x...x...` | — |
+| Bossa nova (2 bars, rim = clave) | `x.....x.x.....x.` ×2 | rim `x..x..x.....x.x.` `..x.x...x..x....` | `o.g.o.g.o.g.o.g.` |
+| Reggae one-drop | `........x.......` | `........x.......` (rim) | `..x...x...x...x.` |
+| Jazz ride (swing it: `swing` 0.33) | `x...............` (feathered) | `....g.......g...` | ride `x...x.x.x...x.x.`, pedal hat `....x.......x...` |
+| 6/8 (step 0.5, 6 per bar) | `x..x..` | `...x..` or rim `..x..x` | `xoo xoo` |
+| Shuffle (12/8 feel, step 1/3, 12 per bar) | `x.....x.....` | `...x.....x..` | `x.xx.xx.xx.x` |
 
 Add a fill (snare/toms 16ths, crescendo with `o`→`x`→`X`) in the last bar of 4- or 8-bar phrases, and a crash on the next
 downbeat. Use velocities (accents and ghosts) — flat velocities sound mechanical.

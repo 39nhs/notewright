@@ -44,6 +44,10 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
      needs network access to github.com (on claude.ai: code execution network access "package managers" or wider).
 2. **Understand the brief:** genre, mood, tempo, length, key, instruments, output formats (WAV / stems / MIDI / sheet music
    PDF / Unity). Ask only about what you cannot reasonably choose yourself; otherwise decide and say what you chose.
+   **Style:** whatever the brief leaves open (often everything, for a test song or "make me a song"), take from a style card
+   in [reference/styles.md](reference/styles.md), never from the examples: name the card and the value of each axis (tempo,
+   meter and feel, key or mode, harmonic rhythm, drums, bass, sounds, form, loudness) before writing, and differ from the
+   previous song in the conversation on at least four axes.
    **A reference song** ("like X", "in the style of X"): unless the user says how to use it, borrow part of its chord
    progression so a listener recognizes it on first hearing, and write your own melody over it; see
    [reference/composition.md](reference/composition.md#reference-songs).
@@ -61,10 +65,13 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
      sandbox) VST3 cannot be used at all** (`setup` shows `vst3` unavailable): don't offer it; use the built-in synth, samples and
      built-in effects, or ask the user to export the plugin's sound to WAV/SFZ (see reference). AU/AAX plugins and Kontakt
      libraries cannot be loaded on any system.
-4. **Write the spec** to a `.json` file in the user's project or a folder they chose (start from
-   `new <path> --template pop|orchestral` or write it directly). Format: [reference/spec.md](reference/spec.md).
+4. **Write the spec** to a `.json` file in the user's project or a folder they chose: write it directly, or start from the
+   template nearest your card, `new <path> --template <name>` (pop, orchestral, mathrock, bossa, ambient, blues, folk68; `new`
+   alone lists them) and change its tempo, key, chords, sounds and form to the card's. The values in templates and docs are
+   format samples, not defaults. Format: [reference/spec.md](reference/spec.md).
    Composition guidance: [reference/composition.md](reference/composition.md). Write melodies and hooks yourself; generate the
-   accompaniment from the chords (`{"chords": "Am F C G", "as": "bass"}`, `{"groove": "rock"}`) and use `cycle` for polymeter.
+   accompaniment from the chords (`{"chords": "<your progression>", "as": "bass"}`, `{"groove": "<style>"}`) and use `cycle`
+   for polymeter.
    A reference the user gives as MIDI: `midi <file>` (tempo, key, chords per bar); as audio: `tempo <file.wav>`.
 5. **Check:** `check <spec>` compiles without rendering (downloads missing instruments) and lists sections, tracks, engine parts
    and warnings, plus `music`: the key it hears, `issues` (notes outside the key, semitone clashes between the melody and held
@@ -140,4 +147,7 @@ range in the spec itself (bass from D2 for a tuba) rather than relying on the re
 - In a sandbox the user cannot open your file paths: render with `--out` into the folder your environment shares with the user
   (for example its outputs folder), or copy the deliverables there.
 - Don't overwrite a user's spec or output without asking; write new files or versioned names (`song-v2.json`).
+- Songs you choose yourself (tests, demos, "any song", several songs) follow [reference/styles.md](reference/styles.md): a card
+  first, four axes apart from the previous song, no copying the example values (104 BPM, A minor, Am F C G, square-lead + pad +
+  sub-bass, groove rock).
 - Credit instrument sources when delivering. Files from the user's own libraries keep their own licenses.

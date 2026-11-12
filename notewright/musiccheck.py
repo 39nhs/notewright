@@ -49,15 +49,17 @@ def check(meta):
         declared = theory.Key.parse(meta["keyName"])
     key_info = {"declared": str(declared) if declared else None, "detected": str(detected) if detected else None,
                 "confidence": round(confidence, 2)}
-    if declared and detected and confidence > .6 and set(declared.scale) != set() and \
+    # detection knows major and minor only: a declared mode (dorian, lydian, blues …) is checked by the notes outside it (below)
+    if declared and detected and confidence > .6 and declared.mode in ("major", "minor") and \
             {(declared.tonic + i) % 12 for i in declared.scale} != {(detected.tonic + i) % 12 for i in detected.scale}:
         issues.append(f"the spec says {declared} but the notes read as {detected} (confidence {confidence:.2f}): fix 'key' or the notes")
     key = declared or (detected if confidence > .5 else None)
 
-    # notes outside the key, per track
+    # notes outside the key, per track (a blues also uses its chords' major thirds and sixths: I7, IV7 and V7 over the blues scale)
     if key:
+        allowed = {(key.tonic + i) % 12 for i in key.scale + ((2, 4, 9, 11) if key.mode == "blues" else ())}
         for t in pitched:
-            outside = [n for n in t["notes"] if not key.contains(n[2])]
+            outside = [n for n in t["notes"] if n[2] % 12 not in allowed]
             share = len(outside) / len(t["notes"])
             if share > .15 and len(outside) >= 3:
                 examples = ", ".join(f"{note_name(n[2])} at {where(n[0])}" for n in outside[:3])

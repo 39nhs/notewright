@@ -2,14 +2,16 @@
 
 A spec is JSON; `//` and `/* */` comments and trailing commas are allowed. Times are in **beats** (quarter notes) unless a
 key says `bar`. Bars are 1-based, beats are 0-based. Unknown keys are errors, so typos are caught by `check`.
-Working examples: `${CLAUDE_PLUGIN_ROOT}/examples/pop.json` and `orchestral.json`.
+Working examples in `${CLAUDE_PLUGIN_ROOT}/examples/`: `pop`, `orchestral`, `mathrock`, `bossa`, `ambient`, `blues`, `folk68`.
+Their values (and the values below) are format samples: take tempo, key, meter, chords and sounds from a style card
+([styles.md](styles.md)).
 
 ```jsonc
 {
-  "title": "Night Drive",            // also the output file name
-  "bpm": 104,                        // 10-60000
-  "meter": 4,                        // beats per bar (x/4 time)
-  "key": "A minor",                  // score key signature only ("F# major", "Bb", "Em"); notes are always absolute
+  "title": "…",                      // also the output file name
+  "bpm": 132,                        // 10-60000 (sample value: take it from your style card)
+  "meter": 3,                        // beats per bar (x/4 time); 6/8, 7/8 … with meterChanges
+  "key": "E dorian",                 // score key signature only ("F# major", "Bb", "Em", "G mixolydian"); notes are always absolute
   "playbackVersion": 3,              // engine sound version (default 3: every feature below; 2 or 1 only to match an older song)
   "instruments": { "<alias>": <instrument>, ... },
   "tracks":      { "<name>": <track>, ... },
@@ -129,9 +131,9 @@ it for accompaniment and keep writing melodies and hooks yourself.
 ```jsonc
 "play": {
   "pad":   {"chords": "i VI III VII", "rhythm": "x-x.", "step": 1, "range": ["E3", "G4"], "voices": 4},
-  "bass":  {"chords": "Am F C G", "as": "bass", "style": "rootFifth", "rhythm": "x.x.", "step": 0.5, "register": "E2"},
-  "arp":   {"chords": "Am F C G", "as": "arp", "order": "upDown", "rate": 0.25, "octaves": 2, "range": ["A3", "E5"]},
-  "drums": {"groove": "rock", "fill": 4, "variation": 0.2, "seed": 1}
+  "bass":  {"chords": "Dm9 G9 Cmaj7:2", "as": "bass", "style": "walking", "register": "E2"},
+  "arp":   {"chords": "G F C G", "as": "arp", "order": "upDown", "rate": 0.25, "octaves": 2, "range": ["G3", "D5"]},
+  "drums": {"groove": "shuffle", "fill": 4, "variation": 0.2, "seed": 1}
 }
 ```
 - `chords`: chord names (`Am F#m7 C/E Bbmaj7 G7 Dsus4 Edim A5`) or numerals in the song `key` (`I V vi IV`, `i bVI bVII`, `V7`,

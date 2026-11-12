@@ -50,6 +50,10 @@ headless renderer) renders WAV, stems, MIDI, MusicXML/PDF and Unity song folders
   package archives and github.com are reachable (claude.ai's default sandbox): no new download hosts without a fallback.
 - Keep the README's network section current: list every host the plugin downloads from and what it writes.
 - Keep the skill (SKILL.md, reference/) in sync with the CLI and spec format in the same change; keep examples rendering.
+- Songs written for tests, demos, examples or listening follow `skills/compose-song/reference/styles.md`: pick a style card,
+  differ from the existing examples on at least four axes, and write the card in the file's first comment line. A new example
+  or doc snippet must not add another copy of an existing one's tempo, key, progression and sounds (that is how every song
+  ended up as 104 BPM A minor Am F C G); values in docs are format samples.
 
 ## Git and checks
 
