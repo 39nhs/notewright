@@ -571,7 +571,8 @@ HINTS = [
     (r"is not a note|is not a pitch", '"C4", "F#3", "Bb2", "60", or a drum name like "kick", "snare", "hat"'),
     (r"a point is|expected a list of points", '[{"bar": 1, "value": -30}, {"bar": 3, "value": 0, "curve": "smooth"}]  or  [[0, -30], [8, 0, "linear"]]'),
     (r"give 'bars' \(or 'beats'\)", '{"name": "verse", "bars": 8, "play": {"drums": "beat", "bass": "bassline"}}'),
-    (r"unknown chord", '"chords": "Dm9 G7 Cmaj7 A7b9"  → names like Dm9, F#m7b5, C/E, Bb5, or numerals in the song key: "ii7 V7 Imaj7", "i bVII bVI"; ":2" = two slots, "-" holds'),
+    (r"unknown chord", '"chords": "Dm9 G7sus4 Cmaj7 A7b9"  → qualities: m 7 maj7 m7 m7b5 dim dim7 aug sus2 sus4 7sus4 6 m6 add9 9 m9 maj9 7b9 5, '
+                       'slash bass C/E, or numerals in the song key: "ii7 V7 Imaj7", "i bVII bVI"; ":2" = two slots, "-" holds'),
     (r"unknown pattern", '"patterns": {"riff": {"melody": "A4:0.5 C5 E5 r:0.5"}}  then play it with "riff"'),
     (r"'groove'", '{"groove": "rock", "fill": 4}  on a drum track; grooves: rock, fourOnFloor, halfTime, breakbeat, metal, shuffle'),
     (r"unknown key '", '"key": "E phrygian"  (or "Bb major", "F# dorian", "G mixolydian", "C#m")'),

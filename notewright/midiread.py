@@ -29,6 +29,16 @@ def _varlen(data, at):
     raise MidiError("bad variable-length number")
 
 
+def _text(body):
+    """A MIDI text event: UTF-8, else Shift-JIS (Japanese files, e.g. ZUN's), else Latin-1."""
+    for encoding in ("utf-8", "cp932"):
+        try:
+            return body.decode(encoding).strip()
+        except UnicodeDecodeError:
+            pass
+    return body.decode("latin-1").strip()
+
+
 def read(path):
     """{division, tempo [(beat, bpm)], meter [(beat, n, d)], keySignature, tracks [{name, channel, program, drums, notes}]};
     notes are [beat, duration, key, velocity 0-1]."""
@@ -67,7 +77,7 @@ def read(path):
                     tonic = (sharps * 7) % 12 if body[1] == 0 else (sharps * 7 + 9) % 12
                     key_signature = f"{theory.PITCH_NAMES[tonic]} {'minor' if body[1] else 'major'}"
                 elif meta == 0x03 and not name:
-                    name = body.decode("latin-1").strip()
+                    name = _text(body)
             elif status in (0xF0, 0xF7):
                 length2, pos = _varlen(data, pos)
                 pos += length2

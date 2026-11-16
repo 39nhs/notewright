@@ -136,15 +136,16 @@ it for accompaniment and keep writing melodies and hooks yourself.
   "drums": {"groove": "shuffle", "fill": 4, "variation": 0.2, "seed": 1}
 }
 ```
-- `chords`: chord names (`Am F#m7 C/E Bbmaj7 G7 Dsus4 Edim A5`) or numerals in the song `key` (`I V vi IV`, `i bVI bVII`, `V7`,
+- `chords`: chord names (`Am F#m7 C/E Bbmaj7 G7 Dsus4 C7sus4 F6 Dm6 Ebmaj9 A7b9 Edim A5`; qualities: m 7 maj7 m7 m7b5 dim dim7 aug sus2 sus4 7sus4 6 m6 add9 9 m9 maj9 7b9 5) or numerals in the song `key` (`I V vi IV`, `i bVI bVII`, `V7`,
   `ii7`); `Am:2` lasts two slots, `-` holds the previous chord one more slot. A slot is `per` beats (default one bar). The
   progression repeats to fill the section. Written chords also fill the song's chord track (`chords`), which `check` compares
-  melodies against.
+  melodies against (in the song file, 7sus4, 6, m6, maj9 and 7b9 are written as the nearest chord the engine reads: sus4, major,
+  minor, maj7, 7; the notes keep the full chord).
 - `as`: `chords` (default; voiced with smooth voice leading inside `range`, default E3-E5; `voices` 2-6 = notes per chord),
   `bass` (`style` root / rootFifth / octave / walking, near `register`, default E2) or `arp` (`order` up / down / upDown / downUp /
   random / asVoiced, a note every `rate` beats across `octaves`, `gate` 0-1 = note length share, `range` default C4-C6).
-- `rhythm` + `step`: when the notes play — `x` accent, `o` soft, `-` hold, `.` rest, one character per `step` beats
-  (no rhythm = held for the whole chord). `velocity`, `transpose`, `octave` as for patterns.
+- `rhythm` + `step`: when the notes play — `x` accent, `o` soft, `-` hold, `.` rest, one character per `step` beats; spaces
+  and `|` only group the steps, as in drum grids (`"x..x..x. x...x..."`; no rhythm = held for the whole chord). `velocity`, `transpose`, `octave` as for patterns.
 - `groove` (drum tracks): `rock fourOnFloor halfTime breakbeat metal shuffle`. Plain n/4 bars use a 16-step groove; other bars (7/8,
   5/4 grouped 3+2, 13/16 …) accent each count group of the meter (`meterChanges` `grouping`, default 7/8 = 2+2+3). A crash opens
   every `fill` bars and their last bar ends in a fill (0 = none); `variation` 0-1 adds seeded ghost notes and hat dynamics.
