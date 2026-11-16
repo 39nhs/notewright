@@ -29,7 +29,12 @@ CHORDS = {
     "m7b5": ("m7b5", (0, 3, 6, 10)), "ø": ("m7b5", (0, 3, 6, 10)), "ø7": ("m7b5", (0, 3, 6, 10)),
     "dim7": ("dim7", (0, 3, 6, 9)), "°7": ("dim7", (0, 3, 6, 9)), "o7": ("dim7", (0, 3, 6, 9)),
     "add9": ("add9", (0, 4, 7, 14)), "m9": ("m9", (0, 3, 7, 10, 14)), "9": ("9", (0, 4, 7, 10, 14)),
+    # beyond the engine's MusicTheory (generators voice them in full; the song's chord track gets ENGINE_SUFFIX)
+    "7sus4": ("7sus4", (0, 5, 7, 10)), "7sus": ("7sus4", (0, 5, 7, 10)), "6": ("6", (0, 4, 7, 9)), "m6": ("m6", (0, 3, 7, 9)),
+    "maj9": ("maj9", (0, 4, 7, 11, 14)), "M9": ("maj9", (0, 4, 7, 11, 14)), "7b9": ("7b9", (0, 4, 7, 10, 13)),
 }
+# The engine's chord track (metadata, never the sound) knows fewer qualities: the nearest one it reads.
+ENGINE_SUFFIX = {"7sus4": "sus4", "6": "", "m6": "m", "maj9": "maj7", "7b9": "7"}
 # Krumhansl & Kessler (1982) probe-tone profiles.
 MAJOR_PROFILE = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
 MINOR_PROFILE = (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
@@ -124,6 +129,17 @@ class Chord:
 
 
 _NUMERALS = (("vii", 6), ("iii", 2), ("vi", 5), ("iv", 3), ("ii", 1), ("v", 4), ("i", 0))
+
+
+def engine_chord_name(name):
+    """A chord name the engine's chord track reads: qualities only notewright knows become the nearest engine quality
+    ('C7sus4' → 'Csus4', 'Dbmaj9/F' → 'Dbmaj7/F'); the root and bass keep their spelling. Anything else is returned as is."""
+    chord = Chord.parse_name(name)
+    if chord is None or chord.suffix not in ENGINE_SUFFIX:
+        return name
+    n = _pitch_length(name)
+    bass = name[name.index("/"):] if "/" in name else ""
+    return name[:n] + ENGINE_SUFFIX[chord.suffix] + bass
 
 
 def _roman(token, key):

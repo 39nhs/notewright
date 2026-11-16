@@ -2,6 +2,7 @@
 drum grooves that follow the meter (grouped odd bars like 7/8 = 2+2+3), plus polymeter helpers. Notes are [beat, duration, key, velocity].
 Rhythm patterns are step strings: "x" accent, "o" soft, "-" hold, "." rest."""
 import math
+import re
 
 MAX_NOTES = 65536
 DRUM_KEYS = {"kick": 36, "snare": 38, "closedHat": 42, "openHat": 46, "crash": 49, "tom": 45}
@@ -54,9 +55,12 @@ def hits(pattern, step, start, beats):
         return
     if not 1 / 64 <= step <= 16:
         raise ComposeError("rhythm step must be 1/64-16 beats")
+    pattern = re.sub(r"[\s|]+", "", pattern)               # spaces and bar lines group steps, as in drum grids
     bad = set(pattern) - set("xo-.")
     if bad:
-        raise ComposeError(f"rhythm patterns use x (accent), o (soft), - (hold) and . (rest), not {''.join(sorted(bad))}")
+        raise ComposeError(f"rhythm patterns use x (accent), o (soft), - (hold) and . (rest), not {', '.join(repr(c) for c in sorted(bad))}")
+    if not pattern:
+        raise ComposeError("empty rhythm pattern")
     steps = int(math.floor(beats / step + 1e-9))
     for s in range(steps):
         c = pattern[s % len(pattern)]

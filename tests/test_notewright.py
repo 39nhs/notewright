@@ -741,6 +741,61 @@ class Compose(unittest.TestCase):
         self.assertEqual(compose.realign(3.5, 4), 28)
 
 
+class FoundByTestSongs(unittest.TestCase):
+    """Problems three 3-minute test songs ran into (a Touhou arrangement in D minor with key changes, a 6/8 orchestral piece,
+    a 5/4 neo-soul piece in F dorian)."""
+
+    def test_more_chord_qualities_and_engine_names(self):
+        from notewright import theory
+        self.assertEqual(theory.Chord.parse_name("C7sus4").pitch_classes, [0, 5, 7, 10])
+        self.assertEqual(theory.Chord.parse_name("A7b9").pitch_classes, [1, 4, 7, 9, 10])
+        for name in ("F6", "Dm6", "Ebmaj9", "G7sus"):
+            self.assertIsNotNone(theory.Chord.parse_name(name), name)
+        # the engine's chord track reads only its own qualities: the nearest one, spelling kept
+        self.assertEqual([theory.engine_chord_name(c) for c in ("C7sus4", "Dbmaj9/F", "F6", "Dm6", "A7b9", "Am7", "ii7")],
+                         ["Csus4", "Dbmaj7/F", "F", "Dm", "A7", "Am7", "ii7"])
+        data = tiny_spec(tracks={"lead": {"instrument": "lead"}, "drums": {"instrument": "drums"}},
+                         sections=[{"name": "a", "bars": 2, "play": {"lead": {"chords": "C7sus4 Ebmaj9"}}}])
+        song, meta = spec.compile(data)
+        self.assertEqual([c["chord"] for c in meta["chords"]], ["C7sus4", "Ebmaj9"])        # checks see the full chord
+        self.assertEqual([c["chord"] for c in song["chords"]], ["Csus4", "Ebmaj7"])          # the engine gets names it reads
+        self.assertIn(65, [n[2] % 12 + 60 for n in meta["tracks"][0]["notes"] if n[0] < 4])  # the 4th (F) is voiced
+
+    def test_rhythm_takes_spaces_and_bar_lines(self):
+        from notewright import compose
+        plain = list(compose.hits("x..x..x.x...x...", .25, 0, 4))
+        self.assertEqual(list(compose.hits("x..x ..x. |x... x...", .25, 0, 4)), plain)
+        with self.assertRaises(compose.ComposeError) as error:
+            list(compose.hits("x.y.", .25, 0, 1))
+        self.assertIn("'y'", str(error.exception))
+
+    def test_a_substituted_drum_is_warned_once(self):
+        data = tiny_spec(patterns={"beat": {"notes": " | ".join(f"{b} 0.25 54" for b in range(8))}, "tune": {"melody": "C5:4"}})
+        warnings = spec.compile(data)[1]["warnings"]
+        self.assertEqual(sum("drum key 54" in w for w in warnings), 1, warnings)
+
+    def test_key_changes_are_followed(self):
+        from notewright import musiccheck
+        b_minor = "B4:1 D5 F#5 C#5 | B4:1 F#4 D5 B4 | G4:1 B4 D5 F#5 | A4:1 C#5 E5 C#5"
+        d_minor = "D5:1 F5 A5 F5 | Bb4:1 D5 F5 D5 | C5:1 E5 G5 E5 | D5:1 A4 F4 D4"
+        def song(key, keys):
+            return spec.compile(tiny_spec(key=key, keys=keys, patterns={"beat": {"drums": {"kick": "x...x...x...x..."}},
+                                                                         "b": {"melody": b_minor}, "d": {"melody": d_minor}},
+                                          sections=[{"name": "riff", "bars": 4, "play": {"lead": "b", "drums": "beat"}},
+                                                    {"name": "theme", "bars": 4, "play": {"lead": "d", "drums": "beat"}}]))[1]
+        right = musiccheck.check(song("B minor", [{"section": "theme", "key": "D minor"}]))
+        self.assertEqual(right["issues"], [], right)
+        self.assertEqual(right["key"]["changes"], [{"at": "bar 5", "key": "D minor"}])
+        wrong = musiccheck.check(song("D minor", [{"section": "theme", "key": "D minor"}]))
+        self.assertTrue(any(i.startswith("from bar 1 the spec says D minor") and "B minor" in i for i in wrong["issues"]), wrong)
+
+    def test_japanese_midi_track_names(self):
+        from notewright import midiread
+        self.assertEqual(midiread._text("【 おてんば恋娘 】".encode("cp932")), "【 おてんば恋娘 】")
+        self.assertEqual(midiread._text("Piano".encode()), "Piano")
+        self.assertEqual(midiread._text(bytes([0x81, 0x20])), "\x81")                         # neither: Latin-1 as before (stripped)
+
+
 class Generators(unittest.TestCase):
     SPEC = {"title": "Gen", "bpm": 120, "meter": 4, "key": "A minor",
             "instruments": {"pad": {"synthPreset": "Warm pad"}, "bass": {"synthPreset": "Sub bass"}, "drums": "synth:drum-kit",

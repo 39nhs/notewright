@@ -401,7 +401,9 @@ def _split(track_name, track, entry, notes, splits, warnings):
                 raise SpecError(f"track '{track_name}': drum {note_name(key)} ({key}) is not in {entry['id']} "
                                 f"(has {', '.join(str(k) for k in sorted(keys))})")
             if region["key"] != key and keys:
-                warnings.append(f"track '{track_name}': drum key {key} played with {region['key']}")
+                message = f"track '{track_name}': drum key {key} played with {region['key']}"
+                if message not in warnings:
+                    warnings.append(message)
                 n = [n[0], n[1], region["key"], n[3]]
             by_region.setdefault(id(region), (region, []))[1].append(n)
         return list(by_region.values())
@@ -1103,6 +1105,8 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
             "master": master, "regions": regions,
             "sections": [{"name": s["name"], "beat": s["beat"]} for s in sections], "parts": parts}
     song.update(extra)
+    if extra.get("chords"):                 # metadata keeps the full names (checks); the engine gets ones it reads
+        song["chords"] = [dict(c, chord=theory.engine_chord_name(c["chord"])) for c in extra["chords"]]
     if buses:
         song["buses"] = buses
     credits = {}
@@ -1119,7 +1123,8 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
                         if t["entry"].get("regions") and not t["drums"] else None} for t in tracks.values()],
             "parts": part_meta, "credits": list(credits.values()), "warnings": warnings, "output": spec.get("output") or {},
             "barStarts": [b[0] for b in ctx["bars"](0, loop)],
-            "vst3": vst3_uses, "polymeter": ctx["polymeter"], "chords": extra.get("chords", []), "keyName": str(song_key) if song_key else None}
+            "vst3": vst3_uses, "polymeter": ctx["polymeter"], "chords": extra.get("chords", []), "keyName": str(song_key) if song_key else None,
+            "keys": extra.get("keys", [])}
     return song, meta
 
 

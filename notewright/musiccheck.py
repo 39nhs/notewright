@@ -42,28 +42,64 @@ def check(meta):
     everything = [n for t in pitched for n in t["notes"]]
     stats = {}
 
-    # key
+    # key, and the key of every section when the spec changes key ("keys")
     detected, confidence = theory.detect_key(everything)
     declared = None
     if meta.get("keyName"):
         declared = theory.Key.parse(meta["keyName"])
     key_info = {"declared": str(declared) if declared else None, "detected": str(detected) if detected else None,
                 "confidence": round(confidence, 2)}
-    # detection knows major and minor only: a declared mode (dorian, lydian, blues …) is checked by the notes outside it (below)
-    if declared and detected and confidence > .6 and declared.mode in ("major", "minor") and \
-            {(declared.tonic + i) % 12 for i in declared.scale} != {(detected.tonic + i) % 12 for i in detected.scale}:
-        issues.append(f"the spec says {declared} but the notes read as {detected} (confidence {confidence:.2f}): fix 'key' or the notes")
     key = declared or (detected if confidence > .5 else None)
+    segments = [(0.0, key)]                                    # (start beat, key), the song's keys in order
+    for change in sorted(meta.get("keys") or [], key=lambda k: k["beat"]):
+        try:
+            changed = theory.Key.parse(change["key"])
+        except theory.TheoryError:
+            continue
+        if change["beat"] < 1e-9:
+            segments[0] = (0.0, changed)
+        else:
+            segments.append((change["beat"], changed))
+    if len(segments) > 1:
+        key_info["changes"] = [{"at": where(b), "key": str(k)} for b, k in segments[1:]]
+    bounds = [b for b, _ in segments] + [float("inf")]
 
-    # notes outside the key, per track (a blues also uses its chords' major thirds and sixths: I7, IV7 and V7 over the blues scale)
-    if key:
-        allowed = {(key.tonic + i) % 12 for i in key.scale + ((2, 4, 9, 11) if key.mode == "blues" else ())}
+    def allowed(k):                 # a blues also uses its chords' major thirds and sixths: I7, IV7 and V7 over the blues scale
+        return {(k.tonic + i) % 12 for i in k.scale + ((2, 4, 9, 11) if k.mode == "blues" else ())}
+
+    def key_at(beat):
+        return segments[max(0, bisect.bisect_right(bounds, beat + 1e-9) - 1)][1]
+
+    # detection knows major and minor only: a declared mode (dorian, lydian, blues …) is checked by the notes outside it (below)
+    if len(segments) == 1:
+        said = segments[0][1] if segments[0][1] is not key else declared      # a change at beat 0 replaces 'key'
+        if said and detected and confidence > .6 and said.mode in ("major", "minor") and \
+                {(said.tonic + j) % 12 for j in said.scale} != {(detected.tonic + j) % 12 for j in detected.scale}:
+            issues.append(f"the spec says {said} but the notes read as {detected} (confidence {confidence:.2f}): fix 'key' or the notes")
+    else:
+        # a section is short and keys a note apart read alike, so a section's key is wrong only when many of its notes are not in it
+        for i, (start, declared_here) in enumerate(segments):
+            notes_here = [n for n in everything if start - 1e-9 <= n[0] < bounds[i + 1] - 1e-9]
+            if not declared_here or len(notes_here) < 16:
+                continue
+            scale = allowed(declared_here)
+            weight = lambda ns: sum(n[1] * n[3] for n in ns)
+            outside = weight([n for n in notes_here if n[2] % 12 not in scale]) / (weight(notes_here) or 1)
+            if outside > .25:
+                seen_key, _ = theory.detect_key(notes_here)
+                issues.append(f"from {where(start)} the spec says {declared_here} but {outside:.0%} of the notes are not in it"
+                              + (f" (they read as {seen_key})" if seen_key else "") + ": fix 'keys' or the notes")
+
+    # notes outside the key, per track
+    scales = {id(k): allowed(k) for _, k in segments if k}
+    if any(k for _, k in segments):
         for t in pitched:
-            outside = [n for n in t["notes"] if n[2] % 12 not in allowed]
+            outside = [n for n in t["notes"] if key_at(n[0]) and n[2] % 12 not in scales[id(key_at(n[0]))]]
             share = len(outside) / len(t["notes"])
             if share > .15 and len(outside) >= 3:
                 examples = ", ".join(f"{note_name(n[2])} at {where(n[0])}" for n in outside[:3])
-                issues.append(f"track '{t['name']}': {len(outside)} of {len(t['notes'])} notes are outside {key} ({examples}…); "
+                against = str(segments[0][1]) if len(segments) == 1 else "the key of their section"
+                issues.append(f"track '{t['name']}': {len(outside)} of {len(t['notes'])} notes are outside {against} ({examples}…); "
                               "chromatic passing notes are fine, held ones sound wrong")
 
     # semitone clashes: a stressed melody note against a note held in another track

@@ -74,7 +74,8 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
    for polymeter.
    A reference the user gives as MIDI: `midi <file>` (tempo, key, chords per bar); as audio: `tempo <file.wav>`.
 5. **Check:** `check <spec>` compiles without rendering (downloads missing instruments) and lists sections, tracks, engine parts
-   and warnings, plus `music`: the key it hears, `issues` (notes outside the key, semitone clashes between the melody and held
+   and warnings, plus `music`: the key it hears, `issues` (notes outside the key — of each section when the spec changes `keys` —,
+   a section whose notes do not fit its declared key, semitone clashes between the melody and held
    notes, melody against the chords, ranges) and `notes`/`stats` (kick-bass alignment, sections that repeat exactly, notes per
    bar, polymeter landing points). Fix errors and every `music.issues` entry you did not intend, then re-check. An error comes
    with an `example` of the right notation.
