@@ -54,6 +54,9 @@ headless renderer) renders WAV, stems, MIDI, MusicXML/PDF and Unity song folders
   differ from the existing examples on at least four axes, and write the card in the file's first comment line. A new example
   or doc snippet must not add another copy of an existing one's tempo, key, progression and sounds (that is how every song
   ended up as 104 BPM A minor Am F C G); values in docs are format samples.
+- Songs with a tune follow `skills/compose-song/reference/songwriting.md` (plan table, hook first, lines by hand, measured with
+  `check`'s `music.shape` / `music.craft`). Thresholds in `notewright/craft.py` and the tables in songwriting.md and styles.md
+  change together.
 
 ## Git and checks
 

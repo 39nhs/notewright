@@ -26,6 +26,9 @@ Claude가 **com.graze.music 엔진(재생 V3)** 으로 곡을 작곡·편곡·�
    - 렌더 리포트(피크, RMS, 섹션별 음량, 트랙별 음량, 클리핑, 드롭된 노트)와 자동 조언으로 Claude가 수치 기반 믹싱
 3. **LLM이 못 듣는 부분을 숫자로**
    - 렌더 전 음악 점검(`check`): 조성 밖 음, 멜로디와 지속음의 반음 충돌, 코드와 어긋난 멜로디, 음역, 킥·베이스 정렬, 똑같이 반복되는 구간
+   - 곡의 모양과 작법 점검(`music.shape`, `music.craft`): 구간별 반주 밀도·파트 수·세기·주선율의 음역·들어가는 자리·마디당 음 수·가장 긴 음,
+     그리고 곡을 단조롭게 만드는 버릇(마디마다 같은 보컬 리듬, 마디에 갇힌 소절, 당김·긴 음 없음, 으뜸음 맴돌기, 근음만 치는 베이스,
+     같은 길이의 화음, 한 마디짜리 드럼, 계단·상투 진행)
    - 렌더 분석: 통합 음량(LUFS)·트루 피크, 5개 주파수 대역(믹스·구간·스템별), 스테레오 폭, 스템끼리 가리는(마스킹) 대역 → 조언으로 정리
    - 이전 렌더와 비교(`changes`), 빠른 미리듣기(`--preview`), 오류마다 올바른 표기 예시
 4. **작곡 보조**
@@ -79,11 +82,13 @@ python3 notewright.py render mysong.json --section chorus # 일부만 빠르게
 스펙 형식과 작곡/믹싱 가이드: [compose-song 스킬](skills/compose-song/SKILL.md) ·
 [spec](skills/compose-song/reference/spec.md) · [instruments](skills/compose-song/reference/instruments.md) ·
 [mixing](skills/compose-song/reference/mixing.md) · [composition](skills/compose-song/reference/composition.md) ·
-[styles](skills/compose-song/reference/styles.md).
+[styles](skills/compose-song/reference/styles.md) · [songwriting](skills/compose-song/reference/songwriting.md).
+곡은 레퍼런스 곡에서 출발해 [songwriting.md](skills/compose-song/reference/songwriting.md)의 순서(설계표 → 훅 → 선율 → 파트 → 구간 연결 →
+`check`로 재고 고치기)로 씁니다.
 예제(스타일 카드별 템플릿): [pop](examples/pop.json) · [orchestral](examples/orchestral.json) · [mathrock](examples/mathrock.json) ·
 [bossa](examples/bossa.json) · [ambient](examples/ambient.json) · [blues](examples/blues.json) · [folk68](examples/folk68.json).
 예제의 템포·조·화성·악기는 그 카드의 선택일 뿐 기본값이 아닙니다. 스타일을 정하지 않은 곡(시험곡, 데모, "아무 곡")은
-[styles.md](skills/compose-song/reference/styles.md)의 스타일 카드를 먼저 고르고, 직전 곡과 축 4개 이상 다르게 만듭니다.
+레퍼런스 곡이 없으면 [styles.md](skills/compose-song/reference/styles.md)의 스타일 카드를 먼저 고르고, 직전 곡과 축 4개 이상 다르게 만듭니다.
 
 ## 구조
 

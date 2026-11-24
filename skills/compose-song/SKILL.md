@@ -44,13 +44,17 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
      needs network access to github.com (on claude.ai: code execution network access "package managers" or wider).
 2. **Understand the brief:** genre, mood, tempo, length, key, instruments, output formats (WAV / stems / MIDI / sheet music
    PDF / Unity). Ask only about what you cannot reasonably choose yourself; otherwise decide and say what you chose.
-   **Style:** whatever the brief leaves open (often everything, for a test song or "make me a song"), take from a style card
-   in [reference/styles.md](reference/styles.md), never from the examples: name the card and the value of each axis (tempo,
-   meter and feel, key or mode, harmonic rhythm, drums, bass, sounds, form, loudness) before writing, and differ from the
-   previous song in the conversation on at least four axes.
-   **A reference song** ("like X", "in the style of X"): unless the user says how to use it, borrow part of its chord
-   progression so a listener recognizes it on first hearing, and write your own melody over it; see
-   [reference/composition.md](reference/composition.md#reference-songs).
+   **Reference first:** songs start from a reference song ([reference/styles.md](reference/styles.md#0-start-from-a-reference)):
+   the one the user names, else ask for one or two (title and the parts they like). Borrow its signature progression, groove,
+   tempo, form and sounds; write the melody, lyrics and riffs new; at most two references. Unless the user says how to use it,
+   borrow part of its chord progression so a listener recognizes it on first hearing
+   ([reference/composition.md](reference/composition.md#reference-songs)).
+   **Style:** only a song nobody can be asked about (a test or demo song) takes a style card from
+   [reference/styles.md](reference/styles.md) instead of a reference, never the examples: name the card and the value of each
+   axis (tempo, meter and feel, key or mode, harmonic rhythm, drums, bass, sounds, form, loudness) before writing, and differ
+   from the previous song in the conversation on at least four axes.
+   **Plan before notes:** follow [reference/songwriting.md](reference/songwriting.md): the plan table (sections, bars, energy,
+   roles, vocal range and entry, harmonic rhythm, what is new) and the vocal plan, then three chorus-hook candidates and pick one.
    **Start and end:** unless the user wants a cold open, a hard ending or a seamless loop, give every song a soft 1–2 bar
    lead-in and let its last 1–2 bars ring out; see [reference/composition.md](reference/composition.md#start-and-end-default).
 3. **Pick instruments** (see [reference/instruments.md](reference/instruments.md)):
@@ -69,9 +73,11 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
    template nearest your card, `new <path> --template <name>` (pop, orchestral, mathrock, bossa, ambient, blues, folk68; `new`
    alone lists them) and change its tempo, key, chords, sounds and form to the card's. The values in templates and docs are
    format samples, not defaults. Format: [reference/spec.md](reference/spec.md).
-   Composition guidance: [reference/composition.md](reference/composition.md). Write melodies and hooks yourself; generate the
-   accompaniment from the chords (`{"chords": "<your progression>", "as": "bass"}`, `{"groove": "<style>"}`) and use `cycle`
-   for polymeter.
+   Songwriting order and craft: [reference/songwriting.md](reference/songwriting.md); harmony families, drums per section and
+   genres: [reference/styles.md](reference/styles.md); format details: [reference/composition.md](reference/composition.md).
+   Write melodies, hooks, bass lines and fills yourself, per 2–4 bar line, chorus first; generate only accompaniment from the
+   chords (`{"chords": "<your progression>", "as": "bass"}`, `{"groove": "<style>"}`), with its own rhythm per section, and use
+   `cycle` for polymeter. Name the tune's track in `"lead"` and the reference in `"reference"`.
    A reference the user gives as MIDI: `midi <file>` (tempo, key, chords per bar); as audio: `tempo <file.wav>`.
 5. **Check:** `check <spec>` compiles without rendering (downloads missing instruments) and lists sections, tracks, engine parts
    and warnings, plus `music`: the key it hears, `issues` (notes outside the key — of each section when the spec changes `keys` —,
@@ -79,6 +85,12 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
    notes, melody against the chords, ranges) and `notes`/`stats` (kick-bass alignment, sections that repeat exactly, notes per
    bar, polymeter landing points). Fix errors and every `music.issues` entry you did not intend, then re-check. An error comes
    with an `example` of the right notation.
+   **Measure the craft:** `music.shape` is one row per section (accompaniment onsets per bar, parts, velocity, the lead's range,
+   entry, notes per bar, longest note and rests, bass on the root, chords per bar): compare it with the plan table. `music.craft`
+   names the habits that make songs monotonous (one vocal rhythm per bar, lines boxed in bars, no pushes or long notes, a melody
+   circling the tonic, roots-only bass, one chord length, one drum bar, stepwise or stock progressions); fix them and measure
+   again, three rounds at most, and tell the user what is left and why
+   ([reference/songwriting.md](reference/songwriting.md#7-count-measure-fix)). Never decide by yourself that the song is good.
 6. **Render:** `render <spec> [--stems] [--pdf] [--unity] [--section NAME | --bars 9-16]`. Default output:
    `<spec folder>/out/<title>/` with `<title>.wav`, `.mid`, `.musicxml`, `report.json` and `<title>.song.json`
    (the engine data). A render runs about 8× faster than real time on `dotnet` (about 4× on .NET Framework or Mono).
@@ -95,8 +107,10 @@ Every command prints JSON. Data (instrument downloads, catalog, renderer build) 
    and arrangement, then re-render: `changes` shows what moved since the previous render of the same range and which tips
    were resolved. Two or three passes are usually enough.
 8. **Deliver:** give the user the file paths (WAV, stems, MIDI, MusicXML/PDF, Unity folder), a short description of the
-   structure (sections with bar numbers), the instruments and their licenses (VSCO 2 CE is CC0; built-in synths are generated),
-   and what to listen for. Ask for feedback in musical terms (e.g. "lead too loud in the chorus?") and iterate.
+   structure (sections with bar numbers), the plan table and the hook, what was borrowed from the reference (progression, from
+   which part, in which bars; groove and sounds), the craft warnings left, the instruments and their licenses (VSCO 2 CE is CC0;
+   built-in synths are generated), and what to listen for. Ask for feedback in musical terms (e.g. "lead too loud in the
+   chorus?"), iterate, and carry the reactions into the next song.
 
 ## Output formats
 
@@ -148,7 +162,11 @@ range in the spec itself (bass from D2 for a tuba) rather than relying on the re
 - In a sandbox the user cannot open your file paths: render with `--out` into the folder your environment shares with the user
   (for example its outputs folder), or copy the deliverables there.
 - Don't overwrite a user's spec or output without asking; write new files or versioned names (`song-v2.json`).
-- Songs you choose yourself (tests, demos, "any song", several songs) follow [reference/styles.md](reference/styles.md): a card
-  first, four axes apart from the previous song, no copying the example values (104 BPM, A minor, Am F C G, square-lead + pad +
-  sub-bass, groove rock).
+- Songs follow [reference/songwriting.md](reference/songwriting.md): a reference, the plan table, the hook first, lines written
+  by hand, measured with `check` (`music.shape`, `music.craft`) rather than self-graded.
+- Songs you choose yourself (tests, demos, "any song", several songs) follow [reference/styles.md](reference/styles.md): a
+  reference or a card first, four axes apart from the previous song, no copying the example values (104 BPM, A minor, Am F C G,
+  square-lead + pad + sub-bass, groove rock).
+- Don't darken a mix to make it "easy on the ears" (no low-pass on every track); fix the harsh track
+  ([reference/mixing.md](reference/mixing.md#dont-darken-the-mix)).
 - Credit instrument sources when delivering. Files from the user's own libraries keep their own licenses.

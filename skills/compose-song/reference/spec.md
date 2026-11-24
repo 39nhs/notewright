@@ -31,7 +31,13 @@ Their values (and the values below) are format samples: take tempo, key, meter, 
   "swing": 0.2, "swingGrid": 0.5,               // delay every second grid step by swing × grid (0..0.75)
   "variationSeed": 7,                           // seed for notes' "skip" chances
   "keys":   [ {"bar": 17, "key": "C# minor"} ], // key changes (metadata), "chords": [ {"bar": 1, "chord": "i"} ] (metadata)
-  "meterChanges": [ {"bar": 9, "numerator": 7, "denominator": 8, "grouping": "2+2+3"} ]   // time signature metadata
+  "meterChanges": [ {"bar": 9, "numerator": 7, "denominator": 8, "grouping": "2+2+3"} ],  // time signature metadata
+  // craft checks (check → music.shape / music.craft, see songwriting.md)
+  "lead": "vox",                                // the track that carries the tune; default: the busiest one-note-at-a-time
+                                                // Melody track, preferring names like vox, vocal, lead, melody
+  "reference": {"song": "Song - Artist", "borrowed": ["chorus", "intro"]}   // the song this one starts from; progression
+                                                // warnings in the borrowed sections (names or kinds; "all" default, "none")
+                                                // become info. A plain string = {"song": …} with everything borrowed
 }
 ```
 

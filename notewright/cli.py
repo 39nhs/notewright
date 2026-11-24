@@ -322,7 +322,7 @@ def _power_mean(values):
     return round(10 * math.log10(sum(10 ** (v / 10) for v in values) / len(values)), 1) if values else None
 
 
-def _spectrum_advice(report, parts):
+def _spectrum_advice(report, parts, drums=()):
     """Tips from the frequency bands, the stereo width, loudness and masking between stems (render analysis)."""
     tips = []
     bands = report.get("bands") or {}
@@ -380,8 +380,15 @@ def _spectrum_advice(report, parts):
                 if shared >= 8 and shared >= .5 * both:
                     quieter = a if a["bands"][band] < c["bands"][band] else c
                     other = c if quieter is a else a
-                    fix = ("high-pass it (HighPassHz 120-200) so the bass owns the lows" if band == "low" else
-                           "EQ-cut it there (Eq: EqLowDb/EqMidDb -3..-6), move it an octave, or give each its own section")
+                    kit = next((t for t in (a, c) if t["name"] in drums), None)
+                    if band == "low" and kit:           # high-passing a kit removes the kick: duck the other under it instead
+                        pitched = c if kit is a else a
+                        quieter, other = pitched, kit
+                        fix = (f"duck it under the kick (Compressor with \"SidechainTrack\": \"{kit['name']}\", or a follower "
+                               "modulator on its volume) rather than high-passing the drums")
+                    else:
+                        fix = ("high-pass it (HighPassHz 120-200) so the bass owns the lows" if band == "low" else
+                               "EQ-cut it there (Eq: EqLowDb/EqMidDb -3..-6), move it an octave, or give each its own section")
                     masking.append((shared, f"'{a['name']}' and '{c['name']}' both sit mainly in {BAND_RANGES[band]} at the same level for "
                                             f"{shared} s: they mask each other; for '{quieter['name']}' {fix}, or pan it away from '{other['name']}'"))
     tips += [text for _, text in sorted(masking, reverse=True)[:3]]
@@ -420,7 +427,7 @@ def _changes(old, new, sections, advice):
 
 def _advice(report, meta, sections, per_second=None, tail=0.0):
     """Mixing tips from the report. per_second (full renders only) also checks the start and end for a lead-in and a ring-out."""
-    tips = _spectrum_advice(report, report.get("parts") or [])
+    tips = _spectrum_advice(report, report.get("parts") or [], {t["name"] for t in meta.get("tracks", []) if t.get("drums")})
     for warning in report.get("pluginWarnings") or []:
         tips.append(f"VST3: {warning} — the track played its fallback (or the insert was bypassed); check the plugin and its settings")
     if report.get("droppedNotes"):

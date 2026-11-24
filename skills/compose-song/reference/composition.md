@@ -1,8 +1,10 @@
 # Composition notes
 
-Write music, not just notes: decide form, harmony, melody and groove first, then encode them as patterns. Unless the brief fixes
-the style, start from a style card in [styles.md](styles.md) and say which; the lists below are menus to choose from, and their
-first entries are not defaults.
+Write music, not just notes: decide form, harmony, melody and groove first, then encode them as patterns. The order of work
+(reference → plan table → hook → tune → parts → links → count and measure with `check`) and the reasons behind it are in
+[songwriting.md](songwriting.md); start there for any song with a tune. Unless the brief fixes the style, start from a reference
+or a style card in [styles.md](styles.md) and say which; the lists below are menus to choose from, and their first entries are
+not defaults.
 
 ## Plan before writing
 
@@ -16,13 +18,15 @@ first entries are not defaults.
    - 7th/9th colours: ii7–V7–Imaj7, iii7–VI7–ii7–V7, Imaj7–IVmaj7, Dm9–G9–Cmaj7, minor ii–V (iiø7–V7–i)
    - blues: 12-bar I7–IV7–I7–I7–IV7–IV7–I7–I7–V7–IV7–I7–V7; epic: i–VI–III–VII, i–VI–iv–V
    Change something in the chorus or B section (harmonic rhythm, register, inversion, a key change).
-3. **Melody**: a short motif (2–4 notes rhythm idea) developed by repetition and variation; stepwise motion with occasional
-   leaps; chord tones on strong beats; phrase in 2- or 4-bar units with question/answer; peak note near the chorus climax.
-   Keep it singable (about an octave and a half).
+3. **Melody**: the chorus hook first (three candidates, pick by [songwriting.md](songwriting.md#41-write-the-hook-first)); a
+   motif developed by repetition, sequence, truncation and pushes; small steps with about one leap per line; chord tones on
+   strong beats; lines of 2–4 bars that cross bar lines and end on a held note; the chorus higher than the verse. Keep it
+   singable (about an octave and a half).
 4. **Groove**: genre drum pattern (below), bass locks to kick, chords rhythm complements melody (sustained under busy melody,
    rhythmic under long notes).
-5. **Energy curve**: add/remove layers per section; raise register, density and velocity toward choruses; drop elements before
-   a big entry (a bar of silence or only pads before the chorus works).
+5. **Energy curve**: build the verse by taking parts out of the chorus; raise register, density and velocity toward choruses;
+   drop elements before a big entry (a bar of silence or only pads before the chorus works); something changes every 8 bars.
+   Write it as the plan table of [songwriting.md](songwriting.md#3-the-plan-table) and compare it with `check`'s `music.shape`.
 
 ## Start and end (default)
 
@@ -41,8 +45,9 @@ The render `advice` flags a song that starts or ends at almost full level.
 
 ## Reference songs
 
-When the user names a song to work from ("like X", "X 느낌으로") and does not say how to use it, the default is fixed: **borrow
-part of its chord progression**, not a loose homage. A new piece that only shares the mood, tempo or instruments is rarely
+Songs start from a reference ([styles.md](styles.md#0-start-from-a-reference): what to take, what to write new, at most two
+references, the reference map). When the user names a song to work from ("like X", "X 느낌으로") and does not say how to use
+it, the default is fixed: **borrow part of its chord progression**, not a loose homage. A new piece that only shares the mood, tempo or instruments is rarely
 recognized; the reference's own harmony is what makes a listener name it on first hearing.
 
 1. **Pick the signature progression**: the 2–8 chords listeners know it by, usually the chorus, hook or opening riff
@@ -54,7 +59,8 @@ recognized; the reference's own harmony is what makes a listener name it on firs
 4. **Melody and lyrics stay original**: write a new melody over the borrowed chords; do not copy the reference's melody, lyrics,
    recorded sounds or distinctive riff note for note.
 5. **Say what you borrowed** when delivering: which progression (Roman numerals and chord names), from which part of the
-   reference, and in which bars of the new song.
+   reference, and in which bars of the new song. Put it in the spec too (`"reference": {"song": "…", "borrowed": ["chorus"]}`):
+   `check` then keeps progression warnings in those sections as info.
 
 If you are not sure of the reference's actual chords, say so and ask the user for them (or for a chord chart) instead of
 guessing; a wrong progression is no longer recognizable. If they have it as a MIDI file, `midi <file>` reads the tempo,
@@ -100,14 +106,17 @@ riff with its own `cycle` over steady bars (`"cycle": 2.5` against 4/4 lines up 
 | 6/8 (step 0.5, 6 per bar) | `x..x..` | `...x..` or rim `..x..x` | `xoo xoo` |
 | Shuffle (12/8 feel, step 1/3, 12 per bar) | `x.....x.....` | `...x.....x..` | `x.xx.xx.xx.x` |
 
-Add a fill (snare/toms 16ths, crescendo with `o`→`x`→`X`) in the last bar of 4- or 8-bar phrases, and a crash on the next
-downbeat. Use velocities (accents and ghosts) — flat velocities sound mechanical.
+Add a fill (snare/toms 16ths, crescendo with `o`→`x`→`X`) at the end of 8- or 16-bar phrases and before new sections, a
+different one each time (tom run, snare roll, one-beat stop, band hit), and a crash on the next downbeat; give each section its
+own grid ([styles.md](styles.md#8-drums-per-section)). Use velocities (accents and ghosts) — flat velocities sound mechanical.
 
 ## Making it sound less mechanical
 
 - Vary velocities (0.6–1.0) by beat strength; accents on downbeats and backbeats.
 - Slight offsets are possible with events (`0.02 0.5 C4`), e.g. laid-back snares or strummed chords
-  (`0 4 C4 | 0.02 3.98 E4 | 0.04 3.96 G4`).
+  (`0 4 C4 | 0.02 3.98 E4 | 0.04 3.96 G4`). Keep them deliberate and consistent: random timing scatter sounds worse, not human;
+  velocity does more.
 - Legato: overlap notes slightly for sustained instruments; staccato: duration 30–50% of the step.
-- Use different patterns for repeated sections (variation every 4 or 8 bars).
+- Use different patterns for repeated sections (variation every 4 or 8 bars); write tune, bass and fills per 2–4 bar line
+  rather than one bar repeated ([songwriting.md](songwriting.md#8-writing-it-in-the-spec)).
 - Long releases on pads; short on basses/plucks to keep the low end clean.
