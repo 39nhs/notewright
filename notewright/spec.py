@@ -4,6 +4,7 @@ A spec describes instruments, tracks, reusable patterns and an arrangement of se
 compile() resolves instruments (downloading registry instruments on demand), expands the arrangement into notes, splits each
 track into engine parts (the engine plays one sample per part: one part per used key zone, one per drum sound) and returns the
 song.json dict plus metadata used by the MIDI / MusicXML / Unity exports."""
+import copy
 import json
 import math
 import re
@@ -267,11 +268,37 @@ def _generate(play, track, where, start, length, meter, ctx):
                                          float(play.get("gate", .8)), low, high, int(play.get("seed", 1)), velocity)
             else:
                 raise SpecError(f"{where}: 'as' must be chords, bass or arp")
+            moved = int(play.get("transpose", 0))           # the chord track follows a transposed part
+            if moved % 12:
+                steps = [(_transposed(c, moved), b, n) for c, b, n in steps]
             ctx["chords"] += [(b, n, c) for c, b, n in steps]
     except (theory.TheoryError, compose.ComposeError) as error:
         raise SpecError(f"{where}: {error}") from None
     shift = 0 if track["drums"] else int(play.get("transpose", 0)) + 12 * int(play.get("octave", 0))
     return [[b, d, k + shift, v] for b, d, k, v in notes if b < start + length - 1e-9]
+
+
+def _reference(value):
+    """"reference": "Song - Artist" or {"song": "Song - Artist", "borrowed": ["chorus", "intro"] | "all" | "none"}: the song this one
+    starts from. Sections it borrows the progression for (names or kinds) get progression warnings as info only."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = {"song": value}
+    if not isinstance(value, dict) or not isinstance(value.get("song"), str) or set(value) - {"song", "borrowed", "notes"}:
+        raise SpecError('\'reference\' is "Song - Artist" or {"song": "Song - Artist", "borrowed": ["chorus", "intro"]} '
+                        '(borrowed: section names or kinds, or "all" / "none"; default all)')
+    borrowed = value.get("borrowed", "all")
+    if not (borrowed in ("all", "none") or isinstance(borrowed, list) and all(isinstance(b, str) for b in borrowed)):
+        raise SpecError("reference.borrowed is a list of section names or kinds (verse, chorus, pre, bridge, intro, outro), or "
+                        '"all" / "none"')
+    return dict(value, borrowed=borrowed)
+
+
+def _transposed(chord, semitones):
+    moved = copy.copy(chord)
+    moved.root, moved.bass = (chord.root + semitones) % 12, (chord.bass + semitones) % 12
+    return moved
 
 
 def _place(play, patterns, track, where, start, length, meter, ctx=None):
@@ -731,7 +758,7 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
     known = {"title", "bpm", "meter", "key", "playbackVersion", "tempo", "master", "instruments", "tracks", "patterns", "sections",
              "regions", "output", "notes", "source", "description",
              "swing", "swingGrid", "keys", "chords", "meterChanges", "targetLufs", "variationSeed", "buses", "masterAutomation",
-             "masterImpulse"}
+             "masterImpulse", "lead", "reference"}
     unknown = set(spec) - known
     if unknown:
         raise SpecError(f"unknown top-level keys {sorted(unknown)} (valid: {', '.join(sorted(known))})")
@@ -794,6 +821,10 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
         tracks[name] = dict(t, name=name, entry=entry, drums=drums, layer=layer, notes=[])
     if not tracks:
         raise SpecError("the spec has no tracks")
+    if spec.get("lead") is not None and (spec["lead"] not in tracks or tracks[spec["lead"]]["drums"]):
+        raise SpecError(f"'lead' names the track that carries the tune (the sung line) for the craft checks; '{spec['lead']}' is not a "
+                        f"pitched track (tracks: {', '.join(n for n, t in tracks.items() if not t['drums'])})")
+    reference = _reference(spec.get("reference"))
 
     # patterns
     patterns = {}
@@ -1124,7 +1155,7 @@ def compile(spec, spec_dir=Path("."), auto_fetch=True, part_budget=None):
             "parts": part_meta, "credits": list(credits.values()), "warnings": warnings, "output": spec.get("output") or {},
             "barStarts": [b[0] for b in ctx["bars"](0, loop)],
             "vst3": vst3_uses, "polymeter": ctx["polymeter"], "chords": extra.get("chords", []), "keyName": str(song_key) if song_key else None,
-            "keys": extra.get("keys", [])}
+            "keys": extra.get("keys", []), "lead": spec.get("lead"), "reference": reference}
     return song, meta
 
 

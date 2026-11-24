@@ -3,7 +3,7 @@ chords, ranges, kick/bass alignment, leaps and sections that repeat exactly. Cla
 would notice first. Positions are 1-based bars of the song's main meter."""
 import bisect
 
-from . import theory
+from . import craft, theory
 from .notes import name as note_name
 
 KICKS = {35, 36}
@@ -34,7 +34,8 @@ def _sounding(notes, beat):
 
 
 def check(meta):
-    """{"key": {...}, "issues": [...], "notes": [...], "stats": {...}} for compiled spec metadata (spec.compile's meta)."""
+    """{"key": {...}, "issues": [...], "notes": [...], "stats": {...}, "lead", "shape": [...], "craft": [...]} for compiled spec
+    metadata (spec.compile's meta). issues are mistakes; craft (craft.py) are the habits that make a song monotonous."""
     meter, issues, notes_out = meta["meter"], [], []
     starts = meta.get("barStarts")
     where = lambda beat: _where(beat, meter, starts)
@@ -190,4 +191,6 @@ def check(meta):
     if meta.get("polymeter"):
         stats["polymeter"] = [f"{p['where']}: a {p['cycle']:g}-beat cycle against {p['bar']:g}-beat bars meets the downbeat again every "
                               f"{p['realignBeats']:g} beats" for p in meta["polymeter"]]
-    return {"key": key_info, "issues": issues, "notes": notes_out, "stats": stats}
+    shaped = craft.check(meta)
+    return {"key": key_info, "issues": issues, "notes": notes_out, "stats": stats, "lead": shaped["lead"], "shape": shaped["shape"],
+            "craft": shaped["craft"]}

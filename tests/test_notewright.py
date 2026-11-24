@@ -899,6 +899,13 @@ class Workflow(unittest.TestCase):
         tips = cli._spectrum_advice(report, [pad, keys])
         for words in ("muddy", "dark", "almost mono", "targetLufs", "mask each other"):
             self.assertTrue(any(words in t for t in tips), (words, tips))
+        # a drum kit and the bass in the lows: duck the bass under the kick, never high-pass the kit
+        kit = {"name": "drums", "kind": "track", "bands": {"low": -21, "lowMid": -30, "mid": -32, "highMid": -45, "high": -50},
+               "bandsPerSecond": [[-21, -30, -32, -45, -50]] * 12}
+        bass = {"name": "bass", "kind": "track", "bands": {"low": -22, "lowMid": -30, "mid": -40, "highMid": -60, "high": -70},
+                "bandsPerSecond": [[-22, -30, -40, -60, -70]] * 12}
+        low = [t for t in cli._spectrum_advice(report, [kit, bass], {"drums"}) if "mask each other" in t]
+        self.assertTrue(low and "SidechainTrack" in low[0] and "for 'bass'" in low[0], low)
         changes = cli._changes({"outputRmsDb": -18, "advice": ["a"]}, {"outputRmsDb": -16}, [], ["b"])
         self.assertEqual(changes["outputRmsDb"], "-18 → -16 (+2.0)")
         self.assertEqual((changes["adviceResolved"], changes["adviceNew"]), (["a"], ["b"]))
@@ -1097,6 +1104,85 @@ class Runtime(unittest.TestCase):
                 os.environ.pop("NOTEWRIGHT_RUNTIME", None)
             else:
                 os.environ["NOTEWRIGHT_RUNTIME"] = old
+
+
+class Craft(unittest.TestCase):
+    """music.shape and music.craft: the measurements of reference/songwriting.md."""
+
+    def craft(self, data):
+        from notewright import musiccheck
+        _, meta = spec.compile(data)
+        music = musiccheck.check(meta)
+        found = {}
+        for c in music["craft"]:                           # a song-wide warning outranks the same check's per-section info
+            found[c["check"]] = "warn" if "warn" in (c["level"], found.get(c["check"])) else c["level"]
+        return music, found
+
+    def band(self, sections, lead_pattern="tune", chords="C G Am F"):
+        return tiny_spec(
+            key="C major",
+            instruments={"lead": "synth:square-lead", "keys": "synth:epiano", "bass": "synth:sub-bass", "drums": "synth:drum-kit"},
+            tracks={"vox": {"instrument": "lead"}, "keys": {"instrument": "keys", "layer": "Harmony"},
+                    "bass": {"instrument": "bass", "layer": "Bass"}, "drums": {"instrument": "drums"}},
+            patterns={"tune": {"melody": "r:0.5 E5:0.5 D5:0.5 C5:0.5 r:0.5 D5:0.5 E5:0.5 D5:0.5"},
+                      "beat": {"drums": {"kick": "x...x...x...x...", "snare": "....x.......x...", "hat": "x.x.x.x.x.x.x.x."}}},
+            sections=[{"name": n, "bars": 8, "play": {"vox": lead_pattern, "keys": {"chords": chords},
+                                                      "bass": {"chords": chords, "as": "bass", "rhythm": "x...", "register": "C2"},
+                                                      "drums": "beat"}} for n in sections])
+
+    def test_a_monotonous_song_is_named(self):
+        music, found = self.craft(self.band(["verse", "chorus", "verse2", "chorus2"]))
+        self.assertEqual(music["lead"], "vox")
+        for code in ("melody-rhythm-loop", "melody-no-push", "melody-small-intervals", "melody-tonic-orbit", "melody-scale-cadence",
+                     "melody-bar-boxes", "melody-short-lines", "melody-same-start", "melody-contour-loop", "melody-no-long-note",
+                     "melody-no-peak", "energy-flat", "arrangement-no-lift", "bass-roots-only", "harmony-rhythm-flat",
+                     "progression-same-loop", "progression-cliche", "drums-loop", "drums-one-groove", "drums-no-fills", "drums-flat"):
+            self.assertEqual(found.get(code), "warn", code)
+        verse = music["shape"][0]
+        self.assertEqual((verse["section"], verse["kind"], verse["bars"], verse["chordsPerBar"], verse["bassOnRoot"]),
+                         ("verse", "verse", 8, 1.0, 1.0))
+        self.assertEqual(verse["vocal"]["barsStart"], "beat 1.5 (100%)")
+        self.assertEqual(verse["vocal"]["longest"], .5)
+
+    def test_a_line_that_crosses_bar_lines_passes(self):
+        phrase = "E5:1 G5:1 A5:0.5 C6:1.5 | B5:0.5 A5:0.5 G5:1 E5:2 | r:0.5 D5:0.5 E5:0.5 G5:1 A5:1.5 | G5:4"
+        data = tiny_spec(patterns={"tune": {"bars": 4, "melody": phrase}},
+                         sections=[{"name": "verse", "bars": 16, "play": {"lead": "tune"}}])
+        music, found = self.craft(data)
+        for code in ("melody-no-push", "melody-bar-boxes", "melody-no-long-note", "melody-short-lines", "melody-same-start"):
+            self.assertNotIn(code, found)
+        self.assertEqual(music["shape"][0]["vocal"]["longest"], 4)
+
+    def test_stepwise_progressions_and_borrowed_sections(self):
+        data = self.band(["verse", "chorus", "bridge"], chords="C Dm Em F")
+        _, found = self.craft(data)
+        self.assertEqual(found["progression-stepwise"], "warn")
+        self.assertEqual(found["progression-diatonic"], "warn")
+        _, found = self.craft(dict(data, reference={"song": "Some Song - Someone", "borrowed": ["verse", "chorus", "bridge"]}))
+        self.assertEqual(found["progression-stepwise"], "info")             # the reference's own progression stays as it is
+        _, found = self.craft(dict(data, reference="Some Song - Someone"))
+        self.assertEqual(found["progression-stepwise"], "info")
+        _, found = self.craft(dict(data, reference={"song": "Some Song - Someone", "borrowed": "none"}))
+        self.assertEqual(found["progression-stepwise"], "warn")
+        # bVI-bVII-i in a minor key is not a staircase
+        _, found = self.craft(dict(self.band(["verse", "chorus", "bridge"], chords="Am F G Am"), key="A minor"))
+        self.assertNotIn("progression-stepwise", found)
+
+    def test_lead_and_reference_keys(self):
+        music, _ = self.craft(dict(self.band(["verse"]), lead="keys"))
+        self.assertEqual(music["lead"], "keys")
+        with self.assertRaises(spec.SpecError):
+            spec.compile(dict(self.band(["verse"]), lead="drums"))
+        with self.assertRaises(spec.SpecError):
+            spec.compile(dict(self.band(["verse"]), reference={"title": "x"}))
+        with self.assertRaises(spec.SpecError):
+            spec.compile(dict(self.band(["verse"]), reference={"song": "x", "borrowed": "chorus"}))
+
+    def test_a_transposed_generator_moves_the_chord_track(self):
+        data = tiny_spec(sections=[{"name": "a", "bars": 2, "play": {"lead": {"chords": "C F", "transpose": 2}}},
+                                   {"name": "b", "bars": 1, "play": {"lead": {"chords": "C", "octave": 1}}}])
+        _, meta = spec.compile(data)
+        self.assertEqual([c["chord"] for c in meta["chords"]], ["D", "G", "C"])
 
 
 @unittest.skipUnless(os.environ.get("NOTEWRIGHT_NETWORK_TESTS"), "set NOTEWRIGHT_NETWORK_TESTS=1 (downloads from github.com)")

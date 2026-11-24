@@ -61,6 +61,60 @@ For orchestral music: melody instrument loudest, strings pad -4 to -8, harp/arpe
   `reverb` in a bridge), `modulators` for motion (a slow LFO on a pad's filter or pan), `masterAutomation` `volume` for fades and
   `speed` for a tape stop. Automate instead of making whole sections louder or quieter by gain alone.
 
+## Don't darken the mix
+
+Asked to remove a harsh or "clangy" instrument, a model may low-pass every track at 1–3 kHz and report "highs reduced by 37 dB"
+as a success. The result sounds muffled, as if through a wall: not comfortable, just dull. Balanced mixes keep about −6 to
+−18 dB of their energy above 2.5 kHz (relative to the whole); darker than about −22 dB is muffled. In the report, `highMid`
+and `high` far under the pop starting points above, with `advice` calling the highs dark, mean the same thing.
+
+1. **No low-pass stacked on every track or on the master.** Low-pass a sound only for a reason (a lo-fi section, a distant pad,
+   a filter sweep). Synth cutoff starting points: leads 6–12 kHz, plucks and keys 4–10 kHz, pads 3–8 kHz, bass 0.4–2 kHz.
+2. **Keep the hats, shakers, cymbals and ride:** they carry the rhythm's outline and the air. If they are too much, lower their
+   level (hat gain about a third to a quarter of the kick's), vary velocities, shorten the decay.
+3. **Fix harshness on the one sound that causes it.** Usually: a square, pulse, chip or FM-bell lead played high and hard; a
+   resonant filter; clipping or too much drive; hats too loud. Move that part down an octave, change its sound (square → saw,
+   FM e-piano, brass, strings), lower its level or resonance, or cut 2–4 kHz by 3–6 dB on that track
+   (`"Eq": true, "EqMidDb": -4, "EqMidHz": 3000, "EqMidQ": 1.5`). Do not darken the whole song.
+4. **Keep the presence band (2–5 kHz) of the voice and lead:** it is where words and tunes stand out.
+5. **Brightness is arrangement too:** spread bass, chords and lead over octaves instead of piling chords in one register; with
+   no high instrument at all a song sounds dark.
+6. **Deliberately dark songs** (lo-fi, ambient) still keep their highs above that −22 dB line; say why they are dark. Never report
+   "suppressed the highs" as an improvement.
+
+## Band layout
+
+**Frequency slots**
+
+| Band | Owner | Others make room |
+|---|---|---|
+| 20–120 Hz | kick, bass | everything else high-passed at 80–180 Hz; kick and bass split by sidechain |
+| 120–500 Hz | upper bass, guitars, keys' left hand, snare body | keys and organ high-passed at 150–200; left hand roots and fifths only |
+| 500 Hz–2 kHz | the lead (voice, trumpet, lead guitar), snare | accompanying guitars and keys −3…−5 dB here |
+| 2–5 kHz | presence: lead, guitar attack, hats | if harsh, cut on that track only (above) |
+| above 5 kHz | cymbals, shakers, air | never removed |
+
+**Pan:** drums, bass and lead in the middle; two guitars ±0.5–0.6; keys −0.2, organ +0.15, acoustic guitar +0.3, percussion
++0.35, trumpet +0.2 / trombone −0.2, strings +0.1. Two instruments in the same register go to opposite sides.
+
+**Space:** one reverb bus (for example `"room": {"effects": {"Reverb": true, "ReverbMix": 1, "ReverbSize": 0.45,
+"ReverbDamping": 0.55, "ReverbPreDelayMs": 18}}`) with sends rather than a reverb per track: strings and horns −6…−8 dB, brass,
+woodwinds and organ −8…−10, keys and guitars −12…−14, drums and bass not sent.
+
+**Kick and bass:** on the bass track `"Compressor": true, "SidechainTrack": "<drum track>", "ThresholdDb": -26, "Ratio": 3,
+"AttackMs": 5, "ReleaseMs": 120`, or a `follower` modulator on its volume. For EDM the same, deeper, on pads and synths. When the
+kit is one track the snare and cymbals duck the bass too: put the kick on its own track and key the sidechain from it.
+
+**Starting gains** (linear, then correct from `stems[].rmsDb`): drums .9, bass .5, clean guitar .6, driven guitar through an amp
+.1, keys .4, organ .18, acoustic guitar .45, percussion .38, lead .5, brass stabs .5–.65, horn .35, strings .35, woodwinds .42.
+A short stab or a part that plays in one section only shows a low song-wide RMS: judge it by its sections.
+
+**Master:** compressor (`ThresholdDb` −16, `Ratio` 2.5, `AttackMs` 25) and a loudness target (`targetLufs`), true peak under
+−1 dB; end with a 1–2 bar ring-out or a smooth `masterAutomation` fade.
+
+**Reading `advice`:** a tip to high-pass the drum stem at 120–200 Hz would remove the kick: separate kick and bass with the
+sidechain instead.
+
 ## Iterating
 
 1. Render with `--stems` once to get balance; fix gross level problems (a track 20 dB off, clipping).
