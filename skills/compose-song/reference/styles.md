@@ -288,7 +288,7 @@ sections), `drums-no-fills` (75 % of 3+ section changes go by on the usual bar) 
 | Blues, country, folk | shuffle, slow blues, boogie, country, bluegrass, folk, Celtic, Americana | 60–260 | 12/8, two-beat, 6/8, 2/2 |
 | Soul, funk, gospel | Motown, funk, disco, gospel, soul ballad, R&B | 60–130 | 4/4 16ths, 12/8 |
 | Hip-hop | boom bap, trap, drill, lo-fi, phonk | 70–160 | swung 16ths, half time |
-| Electronic | house, techno, trance, drum & bass, dubstep, UK garage, synthwave, chiptune, ambient, IDM, future bass, kawaii future bass / cutecore (9.2) | 60–180 | four on the floor, breakbeat, half time |
+| Electronic | house, techno, trance, drum & bass, dubstep (9.3), UK garage, synthwave, chiptune, ambient, IDM, future bass, kawaii future bass / cutecore (9.2) | 60–180 | four on the floor, breakbeat, half time |
 | Pop | K-pop, J-pop / anime, city pop, ballad, electropop | 60–190 | 4/4, two-beat harmonic rhythm |
 | Latin, Caribbean, African | salsa, samba, bossa nova, reggaeton, cumbia, tango, flamenco, reggae, ska, dancehall, afrobeat | 60–200 | clave, 3+3+2, 12/8 |
 | Classical, film, game | orchestral epic, baroque, minimalism, horror, march, waltz, game situations | 40–200 | varied |
@@ -356,12 +356,13 @@ chord change; cutecore cuts it short.
 | Role | notewright | Use |
 |---|---|---|
 | chord stabs | `Saw lead` / `synth:saw-lead`, two tracks ±0.5 | sidechain or follower, open the `lowpass` in the build |
-| lead | `Bell keys`, `FM bell`, `synth:bell`, `synth:pluck`, `synth:square-lead` | C5–C7, velocity under .8, a short echo |
+| lead | piano, `synth:pluck`, `synth:square-lead`; bell sounds (`Bell keys`, `FM bell`, `synth:bell`) easily turn clangy: ask before making one the lead | C5–C7, velocity under .8, a short echo |
 | chip arpeggio | `synth:square-lead` with `CrushBits` 6–8 on that track only (no pulse-width preset) | 16th `upDown` |
 | piano | the user's piano samples, else `FM e-piano` or `synth:piano-synth` | runs and answers; the break's main voice |
 | vocal-chop stand-in | `Wavetable vox`, short notes | an eighth, on line ends only |
 | bass | `synth:sub-bass` + `glide` | slides |
 | risers, effects | White/Pink noise `regions`, an `expression` `bendFrom` (a "boing" up into a note), stutter | builds, just before drops |
+| shouts ("hey", "let's go") | CC0 shout samples as `audio` clips ([instruments.md](instruments.md#shouts-vocal-ad-libs)) | sparingly: before drops, counts, a section's first beat |
 
 **Mix:** about −11.5 LUFS (`targetLufs`), bright but not harsh: no bells ringing all song, nothing high and hard.
 
@@ -373,6 +374,49 @@ Sources: https://www.melodigging.com/genre/kawaii-future-bass-2037 , https://dai
 https://melodyaudio.myblog.arts.ac.uk/?p=6 , https://blog.native-instruments.com/how-to-make-future-bass ,
 https://www.loopmasters.com/articles/4372-How-To-Make-A-Future-Bass-Drop-A-Future-Bass-Production-Tutorial (cutecore tempo and
 drum figures are common lore, not from a checked source).
+
+### 9.3 Dubstep drop: hit the bass, don't drone it
+
+A first dubstep drop written as one- and two-beat wobble notes joined end to end, with a sine LFO on the filter, came out as a
+continuous "wow-wow" with no "dub" and no "step". The "dub" is the bass and kick striking together, the "step" is the snare;
+a bass that never stops buries both. Measured on the bass stem alone (50 ms windows, no master):
+
+| Measure | Droning first draft | Fixed | Target |
+|---|---|---|---|
+| Loud (90th percentile) minus quiet (10th) windows of the bass | 3.4 dB (never silent) | silence between notes | 12 dB or more |
+| Rise time of a bass note (10 % to 90 %) | 12 ms | 2 ms | under 5 ms |
+| Drums minus bass level | −5.7 dB | −0.4 dB | within ±2 dB |
+| The same loud-minus-quiet spread on the finished mix | 3.6 dB | 6.2 dB | 6 dB or more |
+
+- **Two bass sounds**, each its own instrument and track (`{"synth": {...}}`, C# field names):
+  - **The hit ("dub"):** saw + square (`"Osc1Wave": "Saw", "Osc2Wave": "Square", "Osc2Level": 0.7`), a filter envelope that slams
+    shut: `"AmpSustain": 0, "AmpDecay": 0.22, "CutoffHz": 150, "EnvelopeOctaves": 4.5, "FilterDecay": 0.15`; track
+    `"drive": 11, "driveMode": "Hard"`. Played as separate eighth notes.
+  - **The wobble:** the same waves with the filter LFO locked to the tempo: `"LfoWave": "SawDown"` (each cycle starts bright and
+    closes), `"LfoSyncBeats": 0.5` (or 1/3, 0.25), `"LfoFilterOctaves": 5`, `"LfoLevel": 0.55` so the level pumps too. A sine LFO
+    only swells. No note longer than a beat.
+  - `LfoSyncBeats` is one per patch: one wobble track per rate (half, third, quarter beat); moving the riff between tracks changes
+    the rate inside a bar.
+- **Leave holes.** For half a beat on the snare (beat 3, the ninth of 16 steps in half time) the bass plays nothing; leave about a
+  16th between notes too.
+- **The sub follows the bass rhythm**, cut short the same way; held long it becomes the drone again.
+- **Drums as loud as the bass:** an 808-like kick layered on beat 1, snare and clap together at full velocity on 3, hats at ghost
+  velocity (.4). Duck the bass under the kick (`SidechainTrack` = the kick's track).
+- **Write the riff per bar:** two hand-written 4-bar riffs (drop 1, drop 2) mixing hits and wobbles ("two dubs + a wobble",
+  "a wobble + two dubs").
+
+```text
+1 e & a 2 e & a 3 e & a 4 e & a      D = dub (an eighth), w = wobble (a beat, half-beat rate), . = rest
+D . . D w w w w . . D . w w w w      beat 3 (the middle) is empty: the snare's place
+K x . . . . . . . . . x . . . . .
+S . . . . . . . . X . . . . . . .
+```
+
+- **Quiet sections on piano:** intro, break and outro motifs on a piano rather than a bell.
+- **Check:** render with `--stems` and read the bass and drum stems' `rmsDb` per section (drums within about 2 dB of the bass);
+  a bass whose stem never drops between notes is still droning. The wobble's rate at 140 BPM: half beat 4.67 Hz, third 7 Hz,
+  quarter 9.33 Hz.
+- **Common mistakes:** a sine LFO on long notes; bass louder than drums; bass sounding over the snare; drop 2 the same riff.
 
 ## 10. A directive to give a session that writes songs
 

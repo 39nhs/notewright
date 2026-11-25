@@ -1,12 +1,12 @@
 {
   "name": "notewright",
-  "description": "notewright: compose, mix and render songs with Claude.",
+  "description": "notewright: compose, mix and render songs with Claude (Fable recommended).",
   "owner": {"name": "39nhs"},
   "plugins": [
     {
       "name": "notewright",
       "source": "./",
-      "description": "Compose and mix songs with the com.graze.music engine; export WAV, stems, MIDI, MusicXML/PDF and Unity song folders."
+      "description": "Compose and mix songs with the com.graze.music engine; export WAV, stems, MIDI, MusicXML/PDF and Unity song folders. Recommended model: Fable."
     }
   ]
 }

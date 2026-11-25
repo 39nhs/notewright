@@ -3,6 +3,8 @@
 Claude가 **com.graze.music 엔진(재생 V3)** 으로 곡을 작곡·편곡·믹싱하고 **WAV, 스템, MIDI, 악보(MusicXML/PDF), Unity 곡 폴더**로
 출력하는 Claude Code 플러그인입니다. 엔진(`engine/`)을 Unity 없이 컴파일해 오프라인으로 렌더링합니다.
 
+**Fable 모델 사용을 추천합니다.**
+
 이 프로젝트는 com.graze.music Unity 모듈과 **따로 개발**합니다. 엔진은 2026-10-01에 Unity 모듈에서 복사해 왔고, 2026-10-10에 그쪽
 1부 완성 시점 엔진으로 한 번 다시 맞춰 재생 V3를 여기서 출시했습니다(Unity·게임 전용 코드 제외). 그 밖에는 서로 병합하지 않습니다
 ([AGENTS.md](AGENTS.md)). `--unity` 출력은 Unity 모듈의 song.json 형식입니다.

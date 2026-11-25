@@ -1132,7 +1132,7 @@ class Craft(unittest.TestCase):
 
     def test_a_monotonous_song_is_named(self):
         music, found = self.craft(self.band(["verse", "chorus", "verse2", "chorus2"]))
-        self.assertEqual(music["lead"], "vox")
+        self.assertEqual((music["lead"], music["leadSung"]), ("vox", True))
         for code in ("melody-rhythm-loop", "melody-no-push", "melody-small-intervals", "melody-tonic-orbit", "melody-scale-cadence",
                      "melody-bar-boxes", "melody-short-lines", "melody-same-start", "melody-contour-loop", "melody-no-long-note",
                      "melody-no-peak", "energy-flat", "arrangement-no-lift", "bass-roots-only", "harmony-rhythm-flat",
@@ -1143,6 +1143,18 @@ class Craft(unittest.TestCase):
                          ("verse", "verse", 8, 1.0, 1.0))
         self.assertEqual(verse["vocal"]["barsStart"], "beat 1.5 (100%)")
         self.assertEqual(verse["vocal"]["longest"], .5)
+
+    def test_an_instrumental_lead_gets_the_line_checks_as_info(self):
+        data = self.band(["verse", "chorus", "verse2", "chorus2"])
+        data["tracks"]["flute"] = data["tracks"].pop("vox")
+        for s in data["sections"]:
+            s["play"]["flute"] = s["play"].pop("vox")
+        music, found = self.craft(data)
+        self.assertEqual((music["lead"], music["leadSung"]), ("flute", False))
+        for code in ("melody-bar-boxes", "melody-rhythm-loop", "melody-tonic-orbit"):         # boxed lines are boxed on any instrument
+            self.assertEqual(found.get(code), "warn", code)
+        for code in ("melody-no-long-note", "melody-short-lines", "melody-same-start", "melody-no-push"):   # breath and syllables
+            self.assertEqual(found.get(code), "info", code)
 
     def test_a_line_that_crosses_bar_lines_passes(self):
         phrase = "E5:1 G5:1 A5:0.5 C6:1.5 | B5:0.5 A5:0.5 G5:1 E5:2 | r:0.5 D5:0.5 E5:0.5 G5:1 A5:1.5 | G5:4"
