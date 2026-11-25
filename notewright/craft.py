@@ -15,6 +15,10 @@ KINDS = (("pre", r"^pre|build|lift|riser|climb"), ("chorus", r"chorus|hook|refra
          ("verse", r"verse|a-?melo|^a\d*$|^v\d*$"), ("bridge", r"bridge|break|c-?melo|middle|solo|interlude"),
          ("intro", r"intro|lead-?in|^drone$"), ("outro", r"outro|ending|^end|coda|close|fade|^tag"))
 LEAD_NAMES = r"vox|vocal|voice|sing|lead|melod|tune|topline|fiddle"
+SUNG_NAMES = r"vox|vocal|voice|sing|topline|보컬|노래"   # a lead named like this is sung; any other lead is an instrument
+# checks about singing (breath, held syllables, speech rhythm): only info for an instrumental lead
+SINGING = {"melody-no-push", "melody-short-lines", "melody-same-start", "melody-contour-loop", "melody-no-long-note",
+           "melody-verse-chorus-rhythm"}
 DOMINANTS = {"7", "9", "7b9", "7sus4"}
 DEGREES = {0: 1, 2: 2, 4: 3, 5: 4, 7: 5, 9: 6, 11: 7}
 CLICHES = {"1-2-5": [(1, 2, 5)], "4-3": [(4, 3)], "3-2": [(3, 2)], "4-5-3-6": [(4, 5, 3, 6)],
@@ -139,11 +143,18 @@ def _mode(values):
 
 
 def check(meta):
-    """{"lead": track name or None, "shape": [row per section], "craft": [{"check", "level", "message"}]}."""
+    """{"lead": track name or None, "sung": the lead is a voice, "shape": [row per section], "craft": [{"check", "level", "message"}]}.
+    An instrumental lead (not named vox/vocal/voice/sing) gets the same line checks: a line boxed in bars and one rhythm per bar
+    still warn, the checks about singing come as info."""
     song = _Song(meta)
     out, shape = [], []
-    warn = lambda code, message, level="warn": out.append({"check": code, "level": level, "message": message})
     lead = _lead(meta)
+    voiced = bool(lead) and bool(re.search(SUNG_NAMES, lead["name"].lower()))
+
+    def warn(code, message, level="warn"):
+        if not voiced and code in SINGING:
+            level = "info"
+        out.append({"check": code, "level": level, "message": message})
     line = _line(lead["notes"]) if lead else []
     live = [t for t in meta["tracks"] if not t.get("mute") and t["notes"]]
     band = [t for t in live if t is not lead]
@@ -367,7 +378,7 @@ def check(meta):
         if len(strokes) >= 8 and not ups:
             warn("guitar-all-down", f"track '{t['name']}': {len(strokes)} strums, none an upstroke: write upstrokes on the off-beats "
                                     "(top strings first, 3-4 strings, softer)")
-    return {"lead": lead["name"] if lead else None, "shape": shape, "craft": out}
+    return {"lead": lead["name"] if lead else None, "sung": voiced, "shape": shape, "craft": out}
 
 
 def _progressions(song, warn):

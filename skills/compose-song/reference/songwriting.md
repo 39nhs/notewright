@@ -319,7 +319,10 @@ the voice did not grow.
    | `chordsPerBar` | different per section |
 
    The lead is the track named in `"lead"`, else the busiest one-note-at-a-time Melody track (names like vox, vocal, lead,
-   melody win). Put chord and arpeggio tracks on the `Harmony` layer so they are not taken for the tune.
+   melody win). Put chord and arpeggio tracks on the `Harmony` layer so they are not taken for the tune. A lead named
+   vox/vocal/voice/sing is sung (`music.leadSung`); any other lead is an instrument and gets the same line checks: lines boxed
+   in bars and one rhythm per bar still warn, the checks about breath and syllables (pushes, line length, entries, contour, long
+   notes) come as info.
 3. **Fix.** Fix each `music.craft` warning and measure again; three rounds at most. Tell the user what is left and why (a rap or
    a vocal chop written narrow on purpose, a genre that keeps one groove).
 4. **Don't grade yourself.** Self-grading raises the score, not the song. Choose by the hook table (4.1) and the measurements.

@@ -52,6 +52,38 @@ anywhere**. Ways around it:
 2. Convert the patch to SFZ + WAV with a sampler or converter that exports SFZ, then `scan` it; or
 3. Use the MIDI export and play it through the plugin in a DAW.
 
+## Shouts (vocal ad-libs)
+
+The "hey", "let's go" and "come on" in dance music mostly come from sample packs. Many commercial packs allow use in songs but
+not redistributing the samples, so a song folder or a game cannot ship them. A CC0 set: **Producer Space — Dance Vocal Shouts
+1 and 2** (WAV 24-bit 44.1 kHz, about 275 shouts, 48 MB: Hey, Go, Let's Go, Come On, Here We Go, Drop, Oh, Yeah, Everybody,
+Turn it Up, counts One–Ten, Here Comes the Drop, Are You Ready for This; high and low voices mixed; pack 2 has some
+profanity) from https://archive.org/details/producer-space-cc0-sample-library (license: https://producerspace.com/license).
+Download only those two pack folders, and only on the user's computer with their go-ahead.
+
+- **Use them as `audio` clips** on a track named `shouts` (not vox/vocal, so `check` does not take it for the tune). Trim the
+  silence and match the peaks first: the files range from −0.1 to −15 dB.
+- **Put the strongest syllable on the beat,** not the file's start: "let's GO" starts its GO about 0.3 s in. Measure where the
+  loudest syllable begins and start the clip that much earlier (`"beat"` a little before the target, or `"sourceStart"` past
+  the breath). One-syllable shouts (hey, go) start 0.01–0.05 s in.
+
+| Where | What | Note |
+|---|---|---|
+| the silent beat at the end of a build | "here we go", "let's go" | the strong syllable on the silent beat or the drop's first beat |
+| the bar before a stop | "here comes the drop" | "drop" on the beat |
+| the last four beats of a build | "one, two, three, four" | one a beat, louder each time |
+| a breakdown | "are you ready for this" | once, with a reverb send |
+| drops and choruses | "hey" | with the clap/snare (beat 3 in half time, 4 in four on the floor), **only in the last bar of a 4-bar line**; in the last chorus on 2 and 4 of that bar |
+| line ends, a section's first beat | "oh", "yeah", "come on", "go" | once in 4–8 bars |
+
+- **Level:** shout peaks 2–3 dB under the drum peaks; a repeated "hey" at `gainDb` well below the one before the drop.
+- **Sparingly:** a shout announces something (a drop, a count, a breakdown line, a section's first beat). A "hey" every bar
+  becomes part of the drum kit and stops sounding like an ad-lib: once per four bars, about 10–25 in a two-minute song, none in
+  verses or quiet sections, different words per section.
+- **One voice per song:** the high or the low voice; cute songs the high one, hardcore and hip-hop suit the low one too.
+- Credit the pack when delivering (CC0 needs no credit, but say where the voices came from). There are no pitched vocal chops
+  in these packs: `Wavetable vox` short notes stand in.
+
 ## How instruments map to the engine
 
 The engine plays one sample per part, pitched from its root key. A track becomes one engine part per **sample zone its notes

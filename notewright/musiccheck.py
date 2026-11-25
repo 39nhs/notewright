@@ -192,5 +192,5 @@ def check(meta):
         stats["polymeter"] = [f"{p['where']}: a {p['cycle']:g}-beat cycle against {p['bar']:g}-beat bars meets the downbeat again every "
                               f"{p['realignBeats']:g} beats" for p in meta["polymeter"]]
     shaped = craft.check(meta)
-    return {"key": key_info, "issues": issues, "notes": notes_out, "stats": stats, "lead": shaped["lead"], "shape": shaped["shape"],
+    return {"key": key_info, "issues": issues, "notes": notes_out, "stats": stats, "lead": shaped["lead"], "leadSung": shaped["sung"], "shape": shaped["shape"],
             "craft": shaped["craft"]}
